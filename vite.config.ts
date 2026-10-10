@@ -2,11 +2,12 @@ import { fileURLToPath, URL } from 'node:url'
 
 import { defineConfig, lazyPlugins } from 'vite-plus'
 import vue from '@vitejs/plugin-vue'
+import { templateCompilerOptions } from '@tresjs/core'
 import vueDevTools from 'vite-plugin-vue-devtools'
 import tailwindcss from '@tailwindcss/vite'
-import { templateCompilerOptions } from '@tresjs/core'
+import Unfonts from 'unplugin-fonts/vite'
+import Icons from 'unplugin-icons/vite'
 
-// https://vite.dev/config/
 export default defineConfig({
   staged: {
     '*': 'vp check --fix',
@@ -97,15 +98,23 @@ export default defineConfig({
       },
     ],
   },
-  plugins: lazyPlugins(() => [vue({ ...templateCompilerOptions }), vueDevTools(), tailwindcss()]),
-  server: {
-    watch: {
-      ignored: ['**/src-tauri/**', '/public/**'],
-    },
-  },
+  plugins: lazyPlugins(() => [
+    vue({ ...templateCompilerOptions }),
+    vueDevTools(),
+    tailwindcss(),
+    Icons({ compiler: 'vue3', defaultClass: 'icon' }),
+    Unfonts({
+      fontsource: {
+        families: [
+          { name: 'Exo 2', variable: { wght: true }, fallback: { category: 'sans-serif' } },
+        ],
+      },
+    }),
+  ]),
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      '@templates': fileURLToPath(new URL('./templates', import.meta.url)),
     },
   },
 })

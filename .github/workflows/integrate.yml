@@ -24,7 +24,6 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          lfs: true
 
       - name: 🛠️ Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -37,8 +36,8 @@ jobs:
       - name: ⚙️ Build Artifact
         run: bun run build
 
-      # - name: ✅ Test Code
-      #   run: bun run test
+      - name: ✅ Test Code
+        run: bun run test:unit --run
 
       - name: 🧹 Lint Code
         run: bun run lint || echo "Linting failed, but continuing"

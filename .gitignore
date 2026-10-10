@@ -43,6 +43,6 @@ __screenshots__/
 .env
 .env.*
 !.env.example
-
-old
 .vitest/
+# Tool caches
+.fallow

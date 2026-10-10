@@ -1,9 +1,6 @@
 * text=auto eol=lf
-# Tauri Sidecar Executables & Binaries
-src-tauri/bin/* filter=lfs diff=lfs merge=lfs -text
-*.exe filter=lfs diff=lfs merge=lfs -text
-# 3D GLTF / GLB Models
+# 3D models, textures and Rive animations
 *.glb filter=lfs diff=lfs merge=lfs -text
 *.gltf filter=lfs diff=lfs merge=lfs -text
-# High-Resolution Textures
+*.riv filter=lfs diff=lfs merge=lfs -text
 public/textures/* filter=lfs diff=lfs merge=lfs -text
