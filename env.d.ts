@@ -3,7 +3,7 @@
 /// <reference types="unplugin-fonts/client" />
 
 interface ImportMetaEnv {
-  readonly VITE_PUBLIC_SITE_URL?: string
+  readonly VITE_MMOTION_SITE_URL?: string
 }
 
 interface ImportMeta {
