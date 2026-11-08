@@ -1,6 +1,6 @@
 {
   "name": "mmotion",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "100% in-browser 3D device motion studio. Pick a scene, apply your brand and render MP4 or still images locally.",
   "license": "MIT",
