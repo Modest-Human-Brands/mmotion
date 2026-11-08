@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.1.1
+
+[compare changes](https://github.com/shba007/mockup-renderer/compare/v0.1.5...v0.1.1)
+
+### 🚀 Enhancements
+
+- Add new motion templates for iPhone and MacBook showcases ([e648d74](https://github.com/shba007/mockup-renderer/commit/e648d74))
+
+### 💅 Refactors
+
+- Remove convert-markdown.sh script and update dependencies ([9b93eb1](https://github.com/shba007/mockup-renderer/commit/9b93eb1))
+- Remove launch configuration for Claude ([cce2d73](https://github.com/shba007/mockup-renderer/commit/cce2d73))
+
+### 🏡 Chore
+
+- Update environment variable and bump dependencies ([53100d7](https://github.com/shba007/mockup-renderer/commit/53100d7))
+
+### ❤️ Contributors
+
+- Shirsendu Bairagi ([@shba007](https://github.com/shba007))
+
 ## v0.1.5
 
 [compare changes](https://github.com/shba007/mockup-studio/compare/v0.1.4...v0.1.5)
