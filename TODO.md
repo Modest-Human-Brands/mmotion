@@ -1,0 +1,21 @@
+# TODO
+
+- [x] Vue 3 + Vite-Plus 3D motion graphics studio setup
+- [x] 4-step motion creation wizard (Template -> Brand -> Content -> Export)
+- [x] 3D scene kit with TresJS (`<Device>`, `<SceneCamera>`, `<SceneLights>`, `<SceneShadows>`)
+- [x] Deterministic frame-based keyframe animation interpolator
+- [x] Dynamic template registry discovery via Vite glob import
+- [x] MacBook reveal onto platform template (`macbook-reveal-v1`)
+- [x] MacBook on lit podium template (`macbook-podium-v1`)
+- [x] iPhone spiral helix template (`iphone-helix-v1`)
+- [x] 5-device iPhone fanout showcase template (`iphone-fanout-v1`)
+- [x] Dynamic GLB 3D model loading and screen/body mesh texture binding
+- [x] Screen media binding for images, video (MP4/WebM), and Rive runtime animations
+- [x] Procedural animated shader background with WebGPU
+- [x] In-browser WebCodecs MP4/WebM video encoding via Mediabunny
+- [x] In-browser high-resolution still image export (PNG, WebP, JPEG)
+- [x] Keyboard playback and frame stepping controls
+- [x] LocalStorage draft and brand profile persistence
+- [ ] WebGPU fallback for complex shader animations on older browsers
+- [ ] Background tab rendering workaround for browser RAF throttling
+- [ ] Audio track import and video-audio synchronization in export

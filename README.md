@@ -1,90 +1,87 @@
 # MMotion
 
-> A client-only motion studio for 3D device showcases. Pick a scene, apply your brand, tweak the motion and render an MP4 or a still image, all in the browser. No backend, no uploads.
+> Prompt-driven brand story videos. Pick a template, enter your brand, paste a script and get an
+> animated, narrated video with illustrated characters and diagrams that react to the narration,
+> then keep changing it by prompt. Everything runs in the browser against a local
+> OpenAI-compatible model server; nothing is uploaded.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 ---
 
+## Flow
+
+**Template → Brand → Script → Studio → Export**
+
+1. **Template**: an aesthetic and storytelling reference: layout chrome, chapter palettes, type,
+   motion, illustration style and story arc (Soft Explainer, Minimal Tech, Bold Editorial, Soft
+   Gradient).
+2. **Brand**: logo, colours and fonts, saved on this device.
+3. **Script**: prose, a voiceover script or a scene-by-scene outline, plus the format (9:16, 16:9,
+   1:1) and the models to use (picked from the server's `/v1/models`).
+4. **Studio**: preview with timeline, scenes grouped by chapter, illustration progress with
+   retry/redraw, version history with undo/redo, and a prompt box. Each prompt edits the existing
+   video ("turn this into a radial diagram", "the mother should sit next to the child in this
+   picture", "switch to the Soft Explainer template"); select a scene first to scope the request.
+   The studio opens as soon as the story exists; narration and pictures fill in behind it.
+5. **Export**: MP4 (H.264 + AAC narration) or a PNG of the current frame.
+
 ## How it works
 
-MMotion is a static Vue 3 SPA (Vite, Pinia, Tailwind CSS v4, notform + Zod, TresJS / Three.js). The wizard has four steps: **Template → Brand → Content → Export**.
+See [docs/PLAN.md](docs/PLAN.md) for the architecture, the reference analysis and the cycle plan.
 
-- **Templates are Vue scenes.** Each folder in `templates/` holds a `Scene.vue` (the 3D scene, written with the scene kit and plain Tres components), an `index.ts` (`defineMotionTemplate`: metadata, resolution, defaults, optional bloom) and a `thumbnail.png` poster. `registry.ts` discovers them with `import.meta.glob`, so adding a folder adds a template.
-- **Scene kit** (`src/components/studio/scene/`): `<Device>` loads a GLB and binds its screen and body meshes, `<SceneCamera>`, `<SceneLights>` and `<SceneShadows>` cover the usual setup, and `useTrack(keys)` / `useSceneTime()` animate anything from keyframes authored at the template's base fps.
-- **Forms come from the schema.** `parseSchemaToJsonSchema()` turns a template's Zod schema into JSON Schema with layout hints; `SchemaFields` renders it (text, numbers, enums, colours and a media upload) and the same schema validates it.
-- **Overrides, not a keyframe editor.** `buildSettings()` turns the user's choices (screen media, body colour, background, fps, duration, speed, camera FOV and distance) into stage settings (`templates/motion.ts`). Speed and fps change how output frames map to authored frames, so scenes never need rewriting.
-- **Deterministic time.** Everything is a pure function of the frame number: the keyframe interpolator (`src/domain/animation`), the GSAP overlay timelines (paused and seeked, never ticking), the `shaders` background (frame-locked renderer, advanced by exact deltas), video screens (`currentTime`) and Rive screens (low-level runtime, manual stepping). Scrubbing, playback and export therefore show the same pixels.
-- **3D stage.** `SceneStage.vue` hosts the canvas, provides the scene context, and renders the template's `Scene.vue`. Screen media (image, MP4/WebM or `.riv`) is painted to a canvas texture on the screen mesh, once for stills and per frame only for video and Rive. The background (studio backdrop by default) is a scene texture at the frame's aspect, redrawn only when it animates.
-- **Render in the browser.** `src/domain/export/videoExport.ts` drives Mediabunny (WebCodecs): for each frame the stage is seeked, the 3D canvas and the HTML overlay (rasterized with `html-to-image`) are composited and encoded to H.264 MP4, or VP9 WebM when H.264 is unavailable. Stills (PNG, WebP, JPEG) use the same compositor.
-- **Local storage only.** The brand profile and the draft live in `localStorage`. Uploaded media stays in memory as object URLs and is not saved.
+- **The video is a document** (`src/core/composition`): a Zod-validated composition with chapters
+  (light or dark tone), a recurring cast (character sheet + seed) and scenes. Each scene has chrome
+  (headline, step badge, caption), one visual element and beats: phrases in the narration that
+  highlight, reveal, check or raise parts of the element, or swap the caption.
+- **Element library** (`src/render/elements`): a generated `illustration` plus code-drawn
+  `radialDiagram`, `chips`, `sliders`, `checklist`, `speechBubble`, `splitCards`, `bigWord`, `stat`,
+  `quote` and `logoReveal`, each a pure function of scene time and beats. Icons come from a curated
+  Lucide set.
+- **Agents** (`src/core/agent`) call the model server from the browser with strict JSON schemas and
+  thinking switched off: a story pass (chapters, cast, scenes, narration) and a direction pass in
+  batches (element, params, beats per scene); the edit agent turns a prompt into typed operations
+  (`updateScene`, `addScene`, `removeScene`, `moveScene`, `regenerateIllustration`, `updateChapter`,
+  `addChapter`, `updateCast`, `setBrand`, `setTemplate`, `setMeta`) applied and validated by pure
+  code (`ops.ts`), with one repair round for failed ops.
+- **Narration** (`src/core/audio`): one TTS clip per scene, transcribed for word timings so beats
+  land on the spoken word; both cached in IndexedDB, so edits only re-voice changed scenes.
+- **Illustrations** (`src/core/assets`): cast sheet + template style + scene prompt with a fixed
+  seed, generated in a background queue with placeholders and cached by prompt. The queue pauses
+  while the writing or speech models run, because they share one GPU.
+- **Templates** (`src/core/templates`): design systems as data (palette mode, background, type,
+  motion, transitions, illustration style, arc, preferred elements).
+- **Export** (`src/domain/export`): each frame is rasterized from the stage (html-to-image `toSvg`)
+  and encoded with Mediabunny (WebCodecs), with the narration mix as the audio track.
+- **Parked**: the TresJS 3D device scenes live in `src/scenes/device` (cycle 3).
 
-## Templates
+## Requirements
 
-| Template ID         | Category     | Frame (px)  | Length | Description                                                 |
-| :------------------ | :----------- | :---------- | :----- | :---------------------------------------------------------- |
-| `macbook-reveal-v1` | Laptop       | 3840 × 2160 | 6 s    | MacBook rises onto the platform, opens, holds, then exits   |
-| `macbook-podium-v1` | Laptop       | 3840 × 2160 | 6 s    | MacBook on a lit podium with a slow camera and soft shadows |
-| `iphone-helix-v1`   | Phone        | 2160 × 2160 | 9 s    | One iPhone spirals up, settles face-on, then spins away     |
-| `iphone-fanout-v1`  | Multi-device | 3840 × 2160 | 5 s    | Five iPhones rise and fan out side by side                  |
-
-Export at 100%, 50% or 25% of the frame size. 4K H.264 needs hardware support; the exporter checks `canEncodeVideo` and falls back or explains.
-
-## Keyboard
-
-`Space` play/pause · `←` / `→` step one frame · `Shift` + arrow steps ten.
-
-## Browser support
-
-Needs WebCodecs (`VideoEncoder`) for video: Chrome/Edge 94+, Safari 16.4+, Firefox 130+. The animated shader background uses WebGPU and falls back to a static gradient elsewhere. Keep the tab open and visible while rendering, because browsers pause animation frames in background tabs.
-
-## Adding a template
-
-1. Copy a folder in `templates/` (for example `macbook-reveal-v1`).
-2. Edit `Scene.vue`: place `<Device>`s (model in `public/models`, screen and body mesh names), a `<SceneCamera>` and lights, and animate with `useTrack([...keyframes])` authored at the template's base fps. Anything Tres supports works here.
-3. Update `index.ts` (id, label, resolution, defaults) and capture a `thumbnail.png`.
-
-```vue
-<script setup lang="ts">
-import Device from '@/components/studio/scene/Device.vue'
-import SceneCamera from '@/components/studio/scene/SceneCamera.vue'
-import SceneLights from '@/components/studio/scene/SceneLights.vue'
-import { useTrack } from '@/components/studio/scene/context'
-
-const rise = useTrack([
-  { frame: 0, value: [0, -3, 0], easing: 'easeOutCubic' },
-  { frame: 90, value: [0, 0, 0] },
-])
-</script>
-
-<template>
-  <SceneCamera :position="[0, 0, 7]" :fov="34" />
-  <SceneLights />
-  <Device
-    model="/models/apple-iphone-15-pro-max-black.glb"
-    screen="pIJKfZsazmcpEiU"
-    :position="rise"
-  />
-</template>
-```
+- A local OpenAI-compatible server (default `http://127.0.0.1:8981`) with CORS enabled. Models are
+  chosen in the studio settings:
+  - writing: structured output (tested with `gemma-4-12b-it`);
+  - illustrations: `/v1/images/generations` (tested with `qwen-image-2.1-turbo`);
+  - narration: `/v1/audio/speech` (tested with `voxcpm2-audiocpp`);
+  - word timing: `/v1/audio/transcriptions` with word timestamps (tested with
+    `parakeet-tdt-0.6b-v3` and `whisper-large-v3`).
+    Only writing is required; without the others you get placeholders, no voice or evenly spread beats.
+- A browser with WebCodecs (Chrome/Edge 94+, Safari 16.4+, Firefox 130+). Keep the tab visible while
+  exporting; browsers pause rendering in background tabs.
 
 ## Development
 
 ```bash
 bun install
 bun run dev        # http://localhost:5173
-bun run lint       # type-aware lint
+bun run lint
 bun run test:unit
 bun run build
 ```
 
-GLB models, textures and `.riv` files are tracked with Git LFS (see `.gitattributes`). Install Git LFS before cloning.
-
-## Docker
+Agent tests against a live server are opt-in:
 
 ```bash
-bun run docker:build
-bun run docker:start   # http://localhost:2000
+MMOTION_LIVE=1 MMOTION_MODEL=gemma-4-12b-it bunx vp test run src/core/agent
 ```
 
 ## License

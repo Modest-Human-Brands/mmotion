@@ -2,7 +2,7 @@
 import { useRouter } from 'vue-router'
 
 import UiStepper from '@/components/ui/UiStepper.vue'
-import { STEPS, useMotionWizardStore } from '@/stores/motionWizard'
+import { STEPS, useProjectStore } from '@/stores/project'
 
 defineProps<{
   step: number
@@ -11,16 +11,16 @@ defineProps<{
 }>()
 
 const router = useRouter()
-const wizard = useMotionWizardStore()
+const project = useProjectStore()
 
 async function cancel() {
   if (
-    wizard.templateId !== null &&
+    project.composition !== null &&
     !window.confirm('Discard this design? Everything entered so far is removed from this device.')
   ) {
     return
   }
-  wizard.reset()
+  project.reset()
   await router.push(STEPS[0].path)
 }
 </script>

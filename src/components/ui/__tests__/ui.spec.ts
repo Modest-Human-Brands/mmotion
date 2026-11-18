@@ -1,7 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vite-plus/test'
 
-import StageToolbar from '@/components/studio/StageToolbar.vue'
 import UiButton from '../UiButton.vue'
 import UiSegmentedControl from '../UiSegmentedControl.vue'
 import UiStepper from '../UiStepper.vue'
@@ -80,24 +79,5 @@ describe('UiSegmentedControl', () => {
     await wrapper.findAll('[role="radio"]')[1]?.trigger('click')
 
     expect(wrapper.props('modelValue')).toBe('day')
-  })
-})
-
-describe('StageToolbar', () => {
-  it('clamps zoom between 25% and 300% and emits download', async () => {
-    const wrapper = mount(StageToolbar, {
-      props: {
-        zoom: 290,
-        showDownload: true,
-        'onUpdate:zoom': (value: number | undefined) => wrapper.setProps({ zoom: value }),
-      },
-    })
-
-    await wrapper.get('[aria-label="Zoom in"]').trigger('click')
-    expect(wrapper.props('zoom')).toBe(300)
-    expect(wrapper.get('[aria-label="Zoom in"]').attributes('disabled')).toBeDefined()
-
-    await wrapper.get('[aria-label="Download"]').trigger('click')
-    expect(wrapper.emitted('download')).toHaveLength(1)
   })
 })

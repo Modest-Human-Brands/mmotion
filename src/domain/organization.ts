@@ -113,20 +113,6 @@ export function loadOrganization(): OrganizationProfile {
   }
 }
 
-export const NEUTRAL_ORGANIZATION_ID = 'neutral'
-
-export const neutralOrganization: OrganizationProfile = {
-  ...emptyOrganization(),
-  id: NEUTRAL_ORGANIZATION_ID,
-  name: 'Your Company',
-  address: 'Address',
-  phone: 'Phone',
-  contactEmail: 'Email',
-  website: 'Website',
-  primary: '#111111',
-  accent: '#85858F',
-}
-
 export function saveOrganization(profile: OrganizationProfile): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(profile))

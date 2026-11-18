@@ -139,3 +139,21 @@
 .icon > g {
   stroke-width: var(--icon-stroke, 2);
 }
+/* Shared type for video scenes; values come from the theme variables on the stage. */
+.mm-stage .heading {
+  font-family: var(--font-display);
+  font-size: var(--heading-size);
+  font-weight: var(--heading-weight);
+  letter-spacing: var(--tracking);
+  text-transform: var(--heading-case);
+  line-height: 1.12;
+  color: var(--c-text);
+}
+.mm-stage .eyebrow {
+  font-family: var(--font-body);
+  font-size: 1.9cqmin;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--c-text);
+}

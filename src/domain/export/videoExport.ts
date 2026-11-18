@@ -1,4 +1,5 @@
 import {
+  AudioBufferSource,
   BufferTarget,
   CanvasSource,
   Mp4OutputFormat,
@@ -7,6 +8,7 @@ import {
   QUALITY_MEDIUM,
   QUALITY_VERY_HIGH,
   WebMOutputFormat,
+  canEncodeAudio,
   canEncodeVideo,
 } from 'mediabunny'
 
@@ -29,6 +31,8 @@ export interface VideoExportOptions {
   drawFrame: (index: number, canvas: HTMLCanvasElement) => Promise<void>
   onProgress?: (fraction: number) => void
   signal?: AbortSignal
+  /** Soundtrack laid from time 0 (e.g. the voiceover mix). */
+  audio?: AudioBuffer | null
 }
 
 export interface VideoExportResult {
@@ -73,6 +77,17 @@ export async function exportVideo(options: VideoExportOptions): Promise<VideoExp
   })
   const source = new CanvasSource(canvas, { codec, bitrate: QUALITY[quality] })
   output.addVideoTrack(source, { frameRate: fps })
+
+  const audioCodec = codec === 'avc' ? 'aac' : 'opus'
+  const sound =
+    options.audio &&
+    (await canEncodeAudio(audioCodec, {
+      numberOfChannels: options.audio.numberOfChannels,
+      sampleRate: options.audio.sampleRate,
+    }))
+      ? new AudioBufferSource({ codec: audioCodec, bitrate: 128_000 })
+      : null
+  if (sound) output.addAudioTrack(sound)
   await output.start()
 
   const frameDuration = 1 / fps
@@ -84,6 +99,10 @@ export async function exportVideo(options: VideoExportOptions): Promise<VideoExp
       onProgress?.((index + 1) / totalFrames)
     }
     source.close()
+    if (sound && options.audio) {
+      await sound.add(options.audio)
+      sound.close()
+    }
     await output.finalize()
   } catch (error) {
     await output.cancel().catch(() => {})

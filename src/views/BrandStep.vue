@@ -9,15 +9,27 @@ import UiLogoUpload from '@/components/ui/UiLogoUpload.vue'
 import UiSectionRow from '@/components/ui/UiSectionRow.vue'
 import UiFontPicker from '@/components/ui/UiFontPicker.vue'
 import UiTextField from '@/components/ui/UiTextField.vue'
-import StageViewport from '@/components/studio/StageViewport.vue'
 import WizardShell from '@/components/wizard/WizardShell.vue'
 import { useFonts } from '@/composables/useFonts'
 import { SOCIAL_KEYS, type SocialKey } from '@/domain/organization'
-import { STEPS, useMotionWizardStore } from '@/stores/motionWizard'
+import { sampleComposition, sampleMedia } from '@/core/samples'
+import { brandFromOrganization, getTemplate } from '@/core/templates'
+import LivePreview from '@/render/LivePreview.vue'
+import { useBrandStore } from '@/stores/brand'
+import { STEPS, useProjectStore } from '@/stores/project'
 
 const router = useRouter()
-const wizard = useMotionWizardStore()
-const org = computed(() => wizard.organization)
+const brand = useBrandStore()
+const project = useProjectStore()
+const org = computed(() => brand.organization)
+const preview = computed(() => {
+  const template = getTemplate(project.draft.templateId)
+  return sampleComposition(
+    template.id,
+    brandFromOrganization(brand.organization, template),
+    project.draft.format,
+  )
+})
 
 const {
   fonts,
@@ -57,7 +69,7 @@ function toggle(section: 'contact' | 'online') {
 }
 
 async function next() {
-  const checked = await wizard.organizationForm.validate()
+  const checked = await brand.form.validate()
   if (checked.issues) {
     const bad = checked.issues.map((issue) => issue.path?.join('.') ?? '')
     if (bad.some((path) => path === 'contactEmail' || path === 'billingEmail'))
@@ -66,7 +78,7 @@ async function next() {
       open.value = 'online'
     return
   }
-  wizard.saveOrganizationProfile()
+  brand.save()
   void router.push(STEPS[2].path)
 }
 </script>
@@ -77,7 +89,7 @@ async function next() {
     title="Make it yours"
     subtitle="Fill this once. Every design you create will use your logo, colours and font."
   >
-    <NotForm :form="wizard.organizationForm" class="flex flex-col gap-3.5" @submit.prevent>
+    <NotForm :form="brand.form" class="flex flex-col gap-3.5" @submit.prevent>
       <UiLogoUpload v-model="org.logo" />
 
       <UiTextField v-model="org.name" label="Business name" />
@@ -172,7 +184,7 @@ async function next() {
     </NotForm>
 
     <template #note>
-      {{ wizard.organizationSaved ? 'Saved on this device' : 'Unsaved changes' }}
+      {{ brand.saved ? 'Saved on this device' : 'Unsaved changes' }}
     </template>
     <template #actions>
       <UiButton variant="ghost" @click="router.push(STEPS[0].path)">Back</UiButton>
@@ -180,7 +192,7 @@ async function next() {
     </template>
 
     <template #preview>
-      <StageViewport :label="`Preview · ${wizard.template?.shortLabel ?? 'Design'} · Branded`" />
+      <LivePreview :composition="preview" :media="sampleMedia" label="Preview · your brand" />
     </template>
   </WizardShell>
 </template>
