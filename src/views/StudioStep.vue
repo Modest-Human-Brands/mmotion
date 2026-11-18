@@ -1,34 +1,56 @@
 <script setup lang="ts">
-import { computed, onActivated, onDeactivated, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onActivated, onDeactivated, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
+import NarrationPanel from '@/components/studio/NarrationPanel.vue'
+import PromptBox from '@/components/studio/PromptBox.vue'
+import SceneList from '@/components/studio/SceneList.vue'
+import StyleControl from '@/components/studio/StyleControl.vue'
 import TimelinePanel from '@/components/studio/TimelinePanel.vue'
 import UiButton from '@/components/ui/UiButton.vue'
+import UiSegmentedControl from '@/components/ui/UiSegmentedControl.vue'
 import WizardShell from '@/components/wizard/WizardShell.vue'
 import { createPlayback } from '@/core/audio/voiceover'
 import { activeSpans, sceneSpans } from '@/core/composition/timing'
 import VideoPlayer from '@/render/VideoPlayer.vue'
-import { useProjectStore } from '@/stores/project'
+import { usePicturesStore } from '@/stores/pictures'
+import { STEPS, stepIndex, useProjectStore } from '@/stores/project'
 
 defineOptions({ name: 'StudioStep' })
 
+const route = useRoute()
 const router = useRouter()
 const project = useProjectStore()
+const pictures = usePicturesStore()
 const timeline = project.timeline
 
-const prompt = ref('')
+/** The same workspace serves two checkpoints: the storyboard (no narration yet) and the final cut. */
+const storyboard = computed(() => route.name === 'storyboard')
 const focusSceneId = ref<string | null>(null)
+/** Studio side panel: the scene list or the narration editor. */
+const panel = ref<'scenes' | 'narration'>('scenes')
 
-const SUGGESTIONS = [
-  'Make this scene a diagram instead',
-  'Make the headlines shorter',
-  'Add a checklist recap before the closing chapter',
-  'Make the characters smile more',
-]
+const suggestions = computed(() =>
+  storyboard.value
+    ? [
+        'Make this scene a diagram instead',
+        'Use more pictures of the cast',
+        'Add a checklist recap before the closing chapter',
+        'In this picture they should be sitting together',
+      ]
+    : [
+        'Make the headlines shorter',
+        'Make this scene a diagram instead',
+        'Switch to the Bold editorial look',
+        'Draw the pictures in watercolour',
+        'Make the characters smile more',
+      ],
+)
 
 const seconds = computed(() => timeline.currentFrame.value / timeline.fps.value)
 const spans = computed(() => (project.composition ? sceneSpans(project.composition) : []))
 const currentSceneId = computed(() => activeSpans(spans.value, seconds.value).at(-1)?.scene.id)
+const pending = computed(() => new Set(project.undirected.map((scene) => scene.id)))
 
 function selectScene(id: string) {
   const span = spans.value.find((item) => item.scene.id === id)
@@ -39,23 +61,22 @@ function selectScene(id: string) {
   }
 }
 
-async function send(text = prompt.value) {
-  if (!text.trim() || project.busy) return
-  prompt.value = ''
+async function send(text: string) {
   await project.edit(text, focusSceneId.value ?? undefined)
+  // New or rewritten scenes get their visual straight away on the storyboard.
+  if (storyboard.value && project.undirected.length > 0) await project.direct()
 }
 
-function onKeydown(event: KeyboardEvent) {
-  if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
-    event.preventDefault()
-    void send()
-  }
+async function approve() {
+  await project.finish()
+  if (!project.error) await router.push(STEPS[stepIndex('studio')].path)
 }
 
 // Voiceover follows the clock: restart on play, seek, loop or a new mix; stop on pause.
 const playback = createPlayback()
 function syncAudio() {
-  if (timeline.isPlaying.value && project.mix) playback.play(project.mix, seconds.value)
+  if (!storyboard.value && timeline.isPlaying.value && project.mix)
+    playback.play(project.mix, seconds.value)
   else playback.stop()
 }
 watch(() => timeline.isPlaying.value, syncAudio)
@@ -91,8 +112,11 @@ function onShortcut(event: KeyboardEvent) {
 function activate() {
   timeline.start()
   window.addEventListener('keydown', onShortcut)
+  // Entering the storyboard directs whatever has no visual yet.
+  if (storyboard.value && !project.busy && project.undirected.length > 0) void project.direct()
+  if (!storyboard.value) project.ensureVoices()
 }
-onMounted(activate)
+// Kept alive (App.vue), so this also runs on the first mount; onMounted as well would run it twice.
 onActivated(activate)
 onDeactivated(() => {
   window.removeEventListener('keydown', onShortcut)
@@ -100,42 +124,6 @@ onDeactivated(() => {
   timeline.stop()
   playback.stop()
 })
-
-const ELEMENT_LABEL: Record<string, string> = {
-  none: 'Statement',
-  illustration: 'Picture',
-  radialDiagram: 'Diagram',
-  chips: 'Chips',
-  sliders: 'Sliders',
-  checklist: 'Checklist',
-  speechBubble: 'Speech',
-  splitCards: 'Cards',
-  bigWord: 'Big word',
-  stat: 'Stat',
-  quote: 'Quote',
-  logoReveal: 'Logo',
-}
-
-const groups = computed(() => {
-  const current = project.composition
-  if (!current) return []
-  return current.chapters
-    .map((chapter) => ({
-      chapter,
-      scenes: current.scenes
-        .map((scene, index) => ({ scene, index }))
-        .filter(({ scene }) => scene.chapterId === chapter.id),
-    }))
-    .filter((group) => group.scenes.length > 0)
-})
-
-const STATUS_DOT: Record<string, string> = {
-  done: 'bg-success-500',
-  running: 'bg-warning-500 animate-pulse',
-  queued: 'bg-light-400',
-  error: 'bg-alert-500',
-  idle: 'bg-dark-600',
-}
 
 const focusedIllustration = computed(() => {
   const scene = project.composition?.scenes.find((item) => item.id === focusSceneId.value)
@@ -146,111 +134,54 @@ const focusedIllustration = computed(() => {
 <template>
   <WizardShell
     v-if="project.composition"
-    :step="3"
-    :title="project.composition.title"
-    subtitle="Describe a change. Only what you ask for is edited; every version is kept."
+    :step="stepIndex(storyboard ? 'storyboard' : 'studio')"
+    :title="storyboard ? 'Storyboard' : project.composition.title"
+    :subtitle="
+      storyboard
+        ? 'One visual per scene, reacting to the narration. Pictures are drawn from the approved cast while you review. Ask for changes, then approve to record the narration.'
+        : 'Describe a change. Only what you ask for is edited; every version is kept.'
+    "
   >
-    <section class="flex flex-col gap-2" aria-label="Conversation">
-      <p
-        v-for="(entry, index) in project.chat"
-        :key="index"
-        class="rounded-md px-3 py-2 text-sm"
-        :class="
-          entry.role === 'user'
-            ? 'self-end bg-accent-500 text-white'
-            : entry.error
-              ? 'bg-alert-600/20 text-alert-400'
-              : 'bg-dark-500 text-light-600'
-        "
-      >
-        {{ entry.text }}
-      </p>
-    </section>
+    <PromptBox :suggestions="suggestions" :focused="!!focusSceneId" @send="send" />
 
-    <div class="flex flex-col gap-2">
-      <textarea
-        v-model="prompt"
-        rows="3"
-        class="w-full resize-none rounded-md border border-dark-600 bg-dark-500 px-3 py-2 text-sm text-white outline-none placeholder:text-light-400 focus:border-accent-400"
-        :placeholder="
-          focusSceneId
-            ? 'Change this scene… (Ctrl+Enter to send)'
-            : 'e.g. Make scene 2 more energetic (Ctrl+Enter to send)'
-        "
-        :disabled="project.busy"
-        aria-label="Change request"
-        @keydown="onKeydown"
-      />
-      <div class="flex flex-wrap gap-1.5">
-        <button
-          v-for="suggestion in SUGGESTIONS"
-          :key="suggestion"
-          type="button"
-          class="rounded-full border border-dark-600 px-2.5 py-1 text-xs text-light-500 hover:border-light-400 hover:text-white disabled:opacity-40"
-          :disabled="project.busy"
-          @click="send(suggestion)"
-        >
-          {{ suggestion }}
-        </button>
-      </div>
-    </div>
-
-    <section class="flex flex-col gap-1.5" aria-label="Scenes">
+    <UiSegmentedControl
+      v-if="!storyboard"
+      v-model="panel"
+      :options="[
+        { value: 'scenes', label: 'Scenes' },
+        { value: 'narration', label: 'Narration' },
+      ]"
+    />
+    <NarrationPanel v-if="!storyboard && panel === 'narration'" @select="selectScene" />
+    <section v-else class="flex flex-col gap-1.5" aria-label="Scenes">
       <div class="flex items-center justify-between">
         <h3 class="text-xs tracking-[0.06em] text-light-400 uppercase">
           Scenes<span v-if="focusSceneId"> · editing the selected scene</span>
         </h3>
-        <span v-if="project.illustrations.total" class="text-xs text-light-400" role="status">
-          Illustrations {{ project.illustrations.done }}/{{ project.illustrations.total }}
-          <span v-if="project.illustrations.failed" class="text-alert-400">
-            · {{ project.illustrations.failed }} failed</span
+        <span v-if="pictures.progress.total" class="text-xs text-light-400" role="status">
+          Pictures {{ pictures.progress.done }}/{{ pictures.progress.total }}
+          <span v-if="pictures.progress.failed" class="text-alert-400">
+            · {{ pictures.progress.failed }} failed</span
           >
           <button
-            v-if="project.illustrations.failed || project.imageTrouble"
+            v-if="pictures.progress.failed || pictures.trouble"
             type="button"
             class="ml-1 underline hover:text-white"
-            :title="project.imageTrouble ?? undefined"
-            @click="project.retryIllustrations()"
+            :title="pictures.trouble ?? undefined"
+            @click="pictures.retry()"
           >
             Retry
           </button>
         </span>
       </div>
-      <template v-for="group in groups" :key="group.chapter.id">
-        <p class="mt-1 text-2xs font-bold tracking-[0.12em] text-light-500 uppercase">
-          {{ group.chapter.title || 'Untitled chapter' }}
-          <span v-if="group.chapter.tone === 'dark'" class="text-light-400">· dark</span>
-        </p>
-        <button
-          v-for="{ scene, index } in group.scenes"
-          :key="scene.id"
-          type="button"
-          class="flex items-center gap-3 rounded-md border px-3 py-2 text-left"
-          :class="
-            focusSceneId === scene.id
-              ? 'border-accent-400 bg-dark-500'
-              : currentSceneId === scene.id
-                ? 'border-dark-600 bg-dark-500'
-                : 'border-transparent hover:bg-dark-500'
-          "
-          :aria-pressed="focusSceneId === scene.id"
-          @click="selectScene(scene.id)"
-        >
-          <span class="w-5 text-xs text-light-400 tabular-nums">{{ index + 1 }}</span>
-          <span class="flex w-20 shrink-0 items-center gap-1.5 text-xs text-light-400">
-            <span
-              v-if="scene.element.kind === 'illustration'"
-              class="size-1.5 rounded-full"
-              :class="STATUS_DOT[project.images.get(scene.id)?.status ?? 'idle']"
-            />
-            {{ ELEMENT_LABEL[scene.element.kind] }}
-          </span>
-          <span class="min-w-0 flex-1 truncate text-sm text-white">
-            {{ scene.chrome.headline || scene.element.text || scene.chrome.caption || '—' }}
-          </span>
-          <span class="text-xs text-light-400 tabular-nums">{{ scene.duration.toFixed(1) }}s</span>
-        </button>
-      </template>
+      <SceneList
+        :composition="project.composition"
+        :focus-id="focusSceneId"
+        :current-id="currentSceneId"
+        :images="pictures.images"
+        :pending="pending"
+        @select="selectScene"
+      />
       <button
         v-if="focusedIllustration"
         type="button"
@@ -262,7 +193,9 @@ const focusedIllustration = computed(() => {
       </button>
     </section>
 
-    <section class="flex flex-col gap-1.5" aria-label="History">
+    <StyleControl :scene-id="focusSceneId" />
+
+    <section v-if="!storyboard" class="flex flex-col gap-1.5" aria-label="History">
       <h3 class="text-xs tracking-[0.06em] text-light-400 uppercase">History</h3>
       <ol class="flex flex-col gap-0.5">
         <li v-for="(version, index) in project.versions" :key="version.at + index">
@@ -295,7 +228,9 @@ const focusedIllustration = computed(() => {
       {{
         project.busy
           ? `${project.progress}…`
-          : `Version ${project.cursor + 1} of ${project.versions.length}`
+          : storyboard
+            ? `${project.composition.scenes.length} scenes · narration is recorded after you approve`
+            : `Version ${project.cursor + 1} of ${project.versions.length}`
       }}
     </template>
     <template #actions>
@@ -308,23 +243,23 @@ const focusedIllustration = computed(() => {
           >Redo</UiButton
         >
       </template>
-      <UiButton variant="secondary" :disabled="project.busy || !prompt.trim()" @click="send()"
-        >Apply</UiButton
+      <UiButton v-if="storyboard" :disabled="project.busy || pending.size > 0" @click="approve"
+        >Approve · record narration</UiButton
       >
-      <UiButton :disabled="project.busy" @click="router.push('/export')">Export</UiButton>
+      <UiButton v-else :disabled="project.busy" @click="router.push('/export')">Export</UiButton>
     </template>
 
     <template #preview>
       <VideoPlayer
         :composition="project.composition"
         :seconds="seconds"
-        :media="project.media"
-        label="Studio preview"
+        :media="pictures.media"
+        :label="storyboard ? 'Storyboard preview' : 'Studio preview'"
       >
         <TimelinePanel
           :timeline="timeline"
           :keyframes="project.sceneStarts"
-          :disabled="project.busy && project.phase === 'writing'"
+          :disabled="project.busy && project.phase === 'directing'"
         />
       </VideoPlayer>
     </template>

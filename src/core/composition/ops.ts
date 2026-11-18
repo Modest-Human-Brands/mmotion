@@ -5,6 +5,7 @@ import {
   TRANSITIONS,
   beatSchema,
   brandSchema,
+  castMember,
   castMemberSchema,
   chapterSchema,
   chromeSchema,
@@ -26,6 +27,8 @@ const looseItem = z.object({
   detail: z.string().default(''),
 })
 
+const castPatchSchema = castMemberSchema.pick({ name: true, description: true })
+
 const looseBeat = beatSchema.extend({
   target: z.number().int().min(0).default(0),
   text: z.string().default(''),
@@ -40,11 +43,13 @@ const scenePatchSchema = z
   .object({
     chapterId: z.string(),
     chrome: chromeSchema.partial(),
+    brief: z.string(),
     element: elementPatchSchema,
     beats: z.array(looseBeat).max(8),
     voiceover: z.string(),
     duration: z.number(),
     transition: z.enum(TRANSITIONS),
+    styleId: z.string(),
   })
   .partial()
 type ScenePatch = z.infer<typeof scenePatchSchema>
@@ -56,7 +61,11 @@ const metaPatchSchema = z
   })
   .partial()
 
-const chapterPatchSchema = chapterSchema.omit({ id: true }).partial()
+// Without the default, so a patch that leaves out the style keeps it.
+const chapterPatchSchema = chapterSchema
+  .omit({ id: true, styleId: true })
+  .partial()
+  .extend({ styleId: z.string().optional() })
 
 export type EditOp =
   | { op: 'updateScene'; sceneId: string; patch: ScenePatch }
@@ -66,9 +75,11 @@ export type EditOp =
   | { op: 'regenerateIllustration'; sceneId: string }
   | { op: 'updateChapter'; chapterId: string; patch: z.infer<typeof chapterPatchSchema> }
   | { op: 'addChapter'; afterChapterId: string | null; chapter: z.infer<typeof chapterSchema> }
-  | { op: 'updateCast'; members: z.infer<typeof castMemberSchema>[] }
+  | { op: 'updateCast'; members: { name: string; description: string }[] }
   | { op: 'setBrand'; patch: Partial<Composition['brand']> }
   | { op: 'setTemplate'; templateId: string }
+  /** `targetId`: a scene or chapter id; null = the whole video. "" style = inherit. */
+  | { op: 'setStyle'; styleId: string; targetId: string | null }
   | { op: 'setMeta'; patch: z.infer<typeof metaPatchSchema> }
 
 /** The flat shape models return (strict JSON schemas cannot express unions reliably). */
@@ -126,7 +137,7 @@ export function parseRawOp(raw: RawOp): EditOp | string {
         chapter: { ...chapter, id: chapter.id || newId('c') },
       }))
     case 'updateCast':
-      return parse(z.object({ members: z.array(castMemberSchema) }), ({ members }) => ({
+      return parse(z.object({ members: z.array(castPatchSchema) }), ({ members }) => ({
         op: 'updateCast',
         members,
       }))
@@ -136,6 +147,12 @@ export function parseRawOp(raw: RawOp): EditOp | string {
       return parse(z.object({ templateId: z.string().min(1) }), ({ templateId }) => ({
         op: 'setTemplate',
         templateId,
+      }))
+    case 'setStyle':
+      return parse(z.object({ styleId: z.string() }), ({ styleId }) => ({
+        op: 'setStyle',
+        styleId,
+        targetId: raw.sceneId.trim() || null,
       }))
     case 'setMeta':
       return parse(metaPatchSchema, (patch) => ({ op: 'setMeta', patch }))
@@ -161,6 +178,7 @@ function patchScene(scene: Scene, patch: ScenePatch): Scene {
     ...(patch.transition ? { transition: patch.transition } : {}),
     ...(patch.voiceover !== undefined ? { voiceover: patch.voiceover } : {}),
     ...(patch.beats ? { beats: patch.beats } : {}),
+    ...(patch.brief !== undefined ? { brief: patch.brief } : {}),
     chrome: { ...scene.chrome, ...patch.chrome },
     element,
   }
@@ -184,6 +202,7 @@ export function applyOps(
   composition: Composition,
   ops: EditOp[],
   isTemplate: (id: string) => boolean = () => true,
+  isStyle: (id: string) => boolean = () => true,
 ): ApplyResult {
   let draft = clone(composition)
   const errors: string[] = []
@@ -214,11 +233,14 @@ export function applyOps(
           id: newId('s'),
           chapterId: neighbour.chapterId,
           chrome: { headline: '', step: '', caption: '' },
+          brief: '',
           element: emptyElement(),
           beats: [],
           voiceover: '',
+          voiceTake: 0,
           duration: 3,
           transition: 'fade',
+          styleId: '',
         }
         const scene = patchScene(blank, op.patch)
         if (op.patch.duration === undefined) scene.duration = estimateDuration(scene)
@@ -272,8 +294,9 @@ export function applyOps(
           const existing = draft.cast.members.find(
             (item) => item.name.toLowerCase() === member.name.toLowerCase(),
           )
-          if (existing) existing.description = member.description
-          else draft.cast.members.push(member)
+          if (existing?.locked) fail(`${existing.name} is locked; unlock them in Cast first`)
+          else if (existing) existing.description = member.description
+          else draft.cast.members.push(castMember(member.name, member.description))
         }
         break
       }
@@ -284,6 +307,22 @@ export function applyOps(
         if (isTemplate(op.templateId)) draft.templateId = op.templateId
         else fail(`unknown template "${op.templateId}"`)
         break
+      case 'setStyle': {
+        if (op.styleId && !isStyle(op.styleId)) {
+          fail(`unknown style "${op.styleId}"`)
+          break
+        }
+        if (op.targetId === null) {
+          draft.styleId = op.styleId
+          break
+        }
+        const scene = draft.scenes.find((item) => item.id === op.targetId)
+        const chapter = draft.chapters.find((item) => item.id === op.targetId)
+        if (scene) scene.styleId = op.styleId
+        else if (chapter) chapter.styleId = op.styleId
+        else fail(`no scene or chapter "${op.targetId}"`)
+        break
+      }
       case 'setMeta':
         draft = { ...draft, ...op.patch }
         break

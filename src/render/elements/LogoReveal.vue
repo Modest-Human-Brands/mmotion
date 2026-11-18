@@ -8,6 +8,8 @@ const props = defineProps(elementProps)
 
 const disc = computed(() => progressAt(props.local, 0.3, 0.9))
 const words = computed(() => progressAt(props.local, 1.1, 0.8))
+// A logo cast member (e.g. taken from a source video) wins over the brand's uploaded logo.
+const logo = computed(() => props.image.url ?? props.brand.logo)
 const initial = computed(() => (props.brand.name.trim().charAt(0) || '•').toUpperCase())
 </script>
 
@@ -17,7 +19,7 @@ const initial = computed(() => (props.brand.name.trim().charAt(0) || '•').toUp
       class="flex size-[42cqmin] items-center justify-center overflow-hidden rounded-full bg-(--c-surface)"
       :style="{ transform: `scale(${0.4 + 0.6 * disc})`, opacity: disc }"
     >
-      <img v-if="brand.logo" :src="brand.logo" alt="" class="size-[62%] object-contain" />
+      <img v-if="logo" :src="logo" alt="" class="size-[62%] object-contain" />
       <span
         v-else
         class="font-(family-name:--font-display) text-[20cqmin] font-bold text-(--c-text)"

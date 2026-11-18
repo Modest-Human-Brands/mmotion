@@ -1,82 +1,116 @@
-import type { Composition } from '@/core/composition/schema'
+import { spokenWords, type Composition } from '@/core/composition/schema'
 import {
   VOICE_LEAD,
   clampDuration,
+  readingSeconds,
   sceneSpans,
   totalSeconds,
   type WordTime,
 } from '@/core/composition/timing'
-import { speech, transcribeWords } from '@/core/llm/client'
+import { speech, transcribe, type VoiceSample } from '@/core/llm/client'
 
 import { getBlob, hashKey, putBlob } from './cache'
 
 export const SAMPLE_RATE = 48_000
-/** Silence after a scene's narration ends. */
+/** Silence after a scene's narration ends (calm kinds; fast kinds use less). */
 export const VOICE_TAIL = 0.7
+
+/** Tail for a kind whose shortest scenes last `minScene` seconds: fast cuts breathe less. */
+export const voiceTail = (minScene = 4) => Math.min(VOICE_TAIL, Math.max(0.3, minScene * 0.2))
 
 let context: AudioContext | null = null
 const audioContext = () => (context ??= new AudioContext({ sampleRate: SAMPLE_RATE }))
 
 export interface Narration {
   buffer: AudioBuffer
+  /** The recorded WAV (for exports and waveforms). */
+  clip?: Blob
   /** Word timings within the clip, when a transcription model is configured. */
   words?: WordTime[]
 }
 
 const memo = new Map<string, Promise<Narration>>()
 
-async function cachedSpeech(baseUrl: string, model: string, text: string, signal?: AbortSignal) {
-  const key = await hashKey('voice', model, text)
+/** A cloned voice: `id` names the sample in cache keys. */
+export interface ClonedVoice {
+  id: string
+  sample: VoiceSample
+}
+
+export interface NarrationRequest {
+  baseUrl: string
+  speechModel: string
+  /** Word-timing model; "" skips timings. */
+  hearingModel: string
+  text: string
+  /** Language code of the text (passed to the transcriber). */
+  language?: string
+  /** Pass `[tags]` to the speech model (it understands them); otherwise they are removed. */
+  keepTags?: boolean
+  /** Bump for a new recording of the same text. */
+  take?: number
+  voice?: ClonedVoice
+  signal?: AbortSignal
+}
+
+const spokenText = (request: NarrationRequest) =>
+  request.keepTags ? request.text.trim() : spokenWords(request.text)
+
+async function clipKey(request: NarrationRequest) {
+  return hashKey(
+    'voice',
+    request.speechModel,
+    spokenText(request),
+    ...(request.voice ? [request.voice.id] : []),
+    ...(request.take ? [`take${request.take}`] : []),
+  )
+}
+
+async function cachedSpeech(request: NarrationRequest, key: string) {
   let blob = await getBlob(key)
   if (!blob) {
-    blob = await speech(baseUrl, model, text, signal)
+    blob = await speech(
+      request.baseUrl,
+      request.speechModel,
+      spokenText(request),
+      request.signal,
+      request.voice?.sample,
+    )
     await putBlob(key, blob)
   }
   return blob
 }
 
-async function cachedWords(
-  baseUrl: string,
-  model: string,
-  clipKey: string,
-  clip: Blob,
-  signal?: AbortSignal,
-): Promise<WordTime[]> {
-  const key = await hashKey('words', model, clipKey)
-  const cached = await getBlob(key)
+async function cachedWords(request: NarrationRequest, clip: Blob, key: string) {
+  const wordsKey = await hashKey('words', request.hearingModel, key)
+  const cached = await getBlob(wordsKey)
   if (cached) return JSON.parse(await cached.text()) as WordTime[]
-  const words = await transcribeWords(baseUrl, model, clip, signal)
-  await putBlob(key, new Blob([JSON.stringify(words)], { type: 'application/json' }))
+  const { words } = await transcribe(
+    request.baseUrl,
+    request.hearingModel,
+    clip,
+    request.signal,
+    request.language,
+  )
+  await putBlob(wordsKey, new Blob([JSON.stringify(words)], { type: 'application/json' }))
   return words
 }
 
-/** Narration for `text`: synthesized once and cached, plus word timings when `hearingModel` is set. */
-export function narrate(
-  baseUrl: string,
-  speechModel: string,
-  hearingModel: string,
-  text: string,
-  signal?: AbortSignal,
-): Promise<Narration> {
-  const id = [speechModel, hearingModel, text].join('\u0000')
+/** Narration for a line: synthesized once and cached, plus word timings with a hearing model. */
+export async function narrate(request: NarrationRequest): Promise<Narration> {
+  const key = await clipKey(request)
+  const id = `${key}\u0000${request.hearingModel}`
   let pending = memo.get(id)
   if (!pending) {
     pending = (async () => {
-      const clip = await cachedSpeech(baseUrl, speechModel, text, signal)
+      const clip = await cachedSpeech(request, key)
       const buffer = await audioContext().decodeAudioData(await clip.arrayBuffer())
-      if (!hearingModel) return { buffer }
+      if (!request.hearingModel) return { buffer, clip }
       try {
-        const words = await cachedWords(
-          baseUrl,
-          hearingModel,
-          `${speechModel}\u0000${text}`,
-          clip,
-          signal,
-        )
-        return { buffer, words }
+        return { buffer, clip, words: await cachedWords(request, clip, key) }
       } catch {
         // Timings are a refinement; beats fall back to an even spread without them.
-        return { buffer }
+        return { buffer, clip }
       }
     })()
     memo.set(id, pending)
@@ -86,17 +120,26 @@ export function narrate(
 }
 
 /** Make every narrated scene at least as long as its voiceover. */
+/**
+ * Each narrated scene lasts as long as its recorded line (plus a short lead and tail), but never
+ * less than its on-screen text needs to be read. The first estimate came from word counts, so
+ * scenes shrink as well as grow.
+ */
 export function fitToVoiceover(
   composition: Composition,
   voices: Map<string, Narration>,
+  minScene?: number,
 ): Composition {
+  const tail = voiceTail(minScene)
   return {
     ...composition,
     scenes: composition.scenes.map((scene) => {
       const voice = voices.get(scene.id)
       if (!voice) return scene
-      const needed = clampDuration(voice.buffer.duration + VOICE_LEAD + VOICE_TAIL)
-      return needed > scene.duration ? { ...scene, duration: needed } : scene
+      const duration = clampDuration(
+        Math.max(voice.buffer.duration + VOICE_LEAD + tail, readingSeconds(scene)),
+      )
+      return duration === scene.duration ? scene : { ...scene, duration }
     }),
   }
 }

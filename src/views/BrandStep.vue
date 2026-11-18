@@ -12,22 +12,26 @@ import UiTextField from '@/components/ui/UiTextField.vue'
 import WizardShell from '@/components/wizard/WizardShell.vue'
 import { useFonts } from '@/composables/useFonts'
 import { SOCIAL_KEYS, type SocialKey } from '@/domain/organization'
-import { sampleComposition, sampleMedia } from '@/core/samples'
+import { sampleComposition } from '@/core/samples'
 import { brandFromOrganization, getTemplate } from '@/core/templates'
 import LivePreview from '@/render/LivePreview.vue'
 import { useBrandStore } from '@/stores/brand'
 import { STEPS, useProjectStore } from '@/stores/project'
+import { useStylesStore } from '@/stores/styles'
 
 const router = useRouter()
 const brand = useBrandStore()
 const project = useProjectStore()
+const styles = useStylesStore()
 const org = computed(() => brand.organization)
 const preview = computed(() => {
   const template = getTemplate(project.draft.templateId)
   return sampleComposition(
+    project.draft.kindId,
     template.id,
     brandFromOrganization(brand.organization, template),
     project.draft.format,
+    project.draftStyle,
   )
 })
 
@@ -192,7 +196,11 @@ async function next() {
     </template>
 
     <template #preview>
-      <LivePreview :composition="preview" :media="sampleMedia" label="Preview · your brand" />
+      <LivePreview
+        :composition="preview"
+        :media="styles.media(project.draftStyle)"
+        label="Preview · your brand"
+      />
     </template>
   </WizardShell>
 </template>

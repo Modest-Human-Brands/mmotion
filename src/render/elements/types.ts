@@ -9,6 +9,8 @@ export type ImageStatus = 'idle' | 'queued' | 'running' | 'done' | 'error'
 export interface ImageState {
   url: string | null
   status: ImageStatus
+  /** A complete picture with its own background (full-bleed styles): framed, not blended. */
+  framed?: boolean
 }
 
 /**

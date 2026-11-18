@@ -1,7 +1,7 @@
-import familyArt from '@/assets/samples/family.jpg'
 import type { StageMedia } from '@/render/media'
 
 import {
+  DEFAULT_VOICE,
   emptyElement,
   emptyItem,
   type BrandTokens,
@@ -9,118 +9,95 @@ import {
   type FormatId,
   type Scene,
 } from './composition/schema'
+import { getKind } from './kinds'
+import type { ArtStyle } from './styles'
 import { getTemplate } from './templates'
 
 const scene = (partial: Partial<Scene> & Pick<Scene, 'id' | 'chapterId'>): Scene => ({
   chrome: { headline: '', step: '', caption: '' },
+  brief: '',
   element: emptyElement(),
   beats: [],
   voiceover: '',
+  voiceTake: 0,
   duration: 3.5,
   transition: 'fade',
+  styleId: '',
   ...partial,
 })
 
-/** A short story used to preview templates and brand tokens before a script exists. */
+/**
+ * A kind's sample story in a look, used to preview kinds, looks and brand tokens before a script
+ * exists. The content is neutral (no real brand or person).
+ */
 export function sampleComposition(
-  templateId: string,
+  kindId: string,
+  lookId: string,
   brand: BrandTokens,
-  format: FormatId = getTemplate(templateId).format,
+  format: FormatId = getKind(kindId).format,
+  styleId = '',
 ): Composition {
+  const kind = getKind(kindId)
+  const look = getTemplate(lookId)
+  const chapters = kind.sample.chapters.map((chapter, index) => ({
+    id: `c${index}`,
+    title: chapter.tone === 'dark' ? brand.name || chapter.title : chapter.title,
+    tone: chapter.tone,
+    styleId: '',
+  }))
   return {
     version: 2,
-    title: 'Preview',
+    title: kind.sample.title,
     format,
     fps: 30,
-    templateId,
+    templateId: look.id,
+    kindId: kind.id,
+    styleId,
     brand,
     cast: { members: [], seed: 7 },
-    chapters: [
-      { id: 'everyday', title: 'Everyday moments', tone: 'light' },
-      { id: 'why', title: 'Why it happens', tone: 'light' },
-      { id: 'steps', title: 'Small steps help', tone: 'light' },
-      { id: 'brand', title: brand.name || 'Your brand', tone: 'dark' },
-    ],
-    scenes: [
+    voice: DEFAULT_VOICE,
+    language: 'en',
+    commercial: false,
+    chapters,
+    scenes: kind.sample.scenes.map((sample, index) =>
       scene({
-        id: 'p1',
-        chapterId: 'everyday',
+        id: `p${index}`,
+        chapterId: chapters[Math.min(sample.chapter, chapters.length - 1)]!.id,
         chrome: {
-          headline: 'A calm moment, together.',
-          step: '',
-          caption: 'Stories your audience recognises.',
+          headline: sample.headline,
+          step: sample.step ?? '',
+          caption: sample.caption ?? '',
         },
         element: {
-          ...emptyElement('illustration'),
-          prompt: 'Mother offers her son a glass of water',
+          ...emptyElement(sample.element.kind),
+          ...sample.element,
+          items: (sample.element.items ?? []).map((item) => ({ ...emptyItem(), ...item })),
         },
-        transition: 'cut',
+        beats: sample.beats ?? [],
+        duration: sample.duration ?? 3.5,
+        transition: index === 0 ? 'cut' : (look.transitions[0] ?? 'fade'),
       }),
-      scene({
-        id: 'p2',
-        chapterId: 'why',
-        chrome: {
-          headline: 'Our senses take the world in.',
-          step: '',
-          caption: 'Diagrams react to the narration.',
-        },
-        element: {
-          ...emptyElement('radialDiagram'),
-          center: { label: 'Brain', icon: 'brain', detail: '' },
-          items: [
-            { label: 'Sound', icon: 'ear', detail: '' },
-            { label: 'Sight', icon: 'eye', detail: '' },
-            { label: 'Smell', icon: 'flower', detail: '' },
-            { label: 'Taste', icon: 'utensils', detail: '' },
-            { label: 'Touch', icon: 'hand', detail: '' },
-          ],
-        },
-        beats: [
-          { at: '', action: 'highlight', target: 0, text: '' },
-          { at: '', action: 'highlight', target: 1, text: '' },
-          { at: '', action: 'highlight', target: 2, text: '' },
-        ],
-        duration: 4,
-      }),
-      scene({
-        id: 'p3',
-        chapterId: 'why',
-        chrome: {
-          headline: 'Several volume controls…',
-          step: '',
-          caption: 'Turned up. All at once.',
-        },
-        element: {
-          ...emptyElement('sliders'),
-          items: ['Sound', 'Sight', 'Smell', 'Taste', 'Touch'].map((label, index) => ({
-            ...emptyItem(),
-            label,
-            icon: ['ear', 'eye', 'flower', 'utensils', 'hand'][index]!,
-          })),
-        },
-      }),
-      scene({
-        id: 'p4',
-        chapterId: 'steps',
-        chrome: { headline: 'Keep it simple.', step: '01/03', caption: 'Speak gently.' },
-        element: {
-          ...emptyElement('speechBubble'),
-          text: 'Take your time.',
-        },
-        beats: [{ at: '', action: 'caption', target: 0, text: 'Allow time to respond.' }],
-      }),
-      scene({
-        id: 'p5',
-        chapterId: 'brand',
-        chrome: { headline: '', step: '', caption: '' },
-        element: { ...emptyElement('logoReveal'), text: 'Heal. Understand. Grow.' },
-      }),
-    ],
+    ),
   }
 }
 
-/** Preview media: the bundled sample picture stands in for every illustration. */
-export const sampleMedia: StageMedia = {
-  image: () => ({ url: familyArt, status: 'done' }),
-  words: () => undefined,
+/**
+ * A neutral stand-in picture in a style's colours (a figure beside a plant), used until the
+ * style has a generated thumbnail.
+ */
+export function placeholderArt(art: ArtStyle): string {
+  const [a, b] = art.swatch
+  const ground =
+    art.background === 'full-bleed'
+      ? `<rect width="400" height="400" rx="24" fill="${b}" opacity="0.35"/>`
+      : ''
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">${ground}<ellipse cx="200" cy="350" rx="140" ry="16" fill="#0002"/><rect x="150" y="170" width="100" height="170" rx="46" fill="${a}"/><circle cx="200" cy="128" r="40" fill="${a}" opacity="0.85"/><rect x="270" y="270" width="56" height="70" rx="10" fill="${b}"/><path d="M298 270c-30-40-10-80 0-96c10 16 30 56 0 96z" fill="${b}" opacity="0.8"/></svg>`
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+}
+
+/** Preview media: every illustration shows the style's thumbnail (or its placeholder). */
+export function sampleMedia(art: ArtStyle, thumbnail?: string): StageMedia {
+  const url = thumbnail ?? placeholderArt(art)
+  const framed = art.background === 'full-bleed'
+  return { image: () => ({ url, status: 'done', framed }), words: () => undefined }
 }

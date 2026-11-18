@@ -53,12 +53,30 @@ describe('UiTextField', () => {
 describe('UiStepper', () => {
   it('marks done steps, the current step and upcoming steps', () => {
     const wrapper = mount(UiStepper, {
-      props: { steps: ['Template', 'Brand', 'Details', 'Send'], current: 1 },
+      props: { steps: ['Template', 'Brand', 'Details', 'Send'], current: 1, reachable: 2 },
     })
-    const labels = wrapper.findAll('li span:last-child').map((node) => node.text())
+    const buttons = wrapper.findAll('li button')
 
-    expect(labels).toEqual(['✓  Template', '2 Brand', '3 Details', '4 Send'])
+    expect(buttons.map((node) => node.text())).toEqual([
+      '✓ Template',
+      '2 Brand',
+      '3 Details',
+      '4 Send',
+    ])
     expect(wrapper.find('[aria-current="step"]').text()).toBe('2 Brand')
+    // Approved steps can be reopened; later ones cannot.
+    expect(buttons.map((node) => node.attributes('disabled') !== undefined)).toEqual([
+      false,
+      true,
+      false,
+      true,
+    ])
+  })
+
+  it('opens a reachable step', async () => {
+    const wrapper = mount(UiStepper, { props: { steps: ['A', 'B'], current: 1, reachable: 1 } })
+    await wrapper.findAll('li button')[0]!.trigger('click')
+    expect(wrapper.emitted('go')).toEqual([[0]])
   })
 })
 

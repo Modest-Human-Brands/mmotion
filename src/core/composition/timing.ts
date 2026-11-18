@@ -1,4 +1,4 @@
-import type { Composition, Scene } from './schema'
+import { spokenWords, type Composition, type Scene } from './schema'
 
 /** Overlap used when a scene enters over the previous one (seconds). */
 export const TRANSITION_SECONDS = 0.5
@@ -44,17 +44,21 @@ const WORDS_PER_SECOND = 2.6
 
 const wordCount = (text: string) => text.split(/\s+/).filter(Boolean).length
 
-/** A first guess at a scene's length from its narration and on-screen text. */
-export function estimateDuration(scene: Scene): number {
-  const narration = wordCount(scene.voiceover) / WORDS_PER_SECOND
+/** Seconds a viewer needs to read a scene's on-screen text. */
+export function readingSeconds(scene: Scene): number {
   const onScreen = [
     scene.chrome.headline,
     scene.chrome.caption,
     ...scene.beats.map((beat) => beat.text),
     ...scene.element.items.map((item) => item.label),
   ].join(' ')
-  const reading = wordCount(onScreen) / 4
-  return clampDuration(Math.max(narration + 0.9, reading + 1.2, 2.5))
+  return Math.max(wordCount(onScreen) / 4 + 1.2, 1.5)
+}
+
+/** A first guess at a scene's length from its narration and on-screen text. */
+export function estimateDuration(scene: Scene): number {
+  const narration = wordCount(spokenWords(scene.voiceover)) / WORDS_PER_SECOND
+  return clampDuration(Math.max(narration + 0.9, readingSeconds(scene), 2.5))
 }
 
 export const clampDuration = (seconds: number) =>
@@ -70,9 +74,37 @@ export interface WordTime {
 const tokens = (text: string) =>
   text
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s']/gu, ' ')
+    .normalize('NFC')
+    // Keep combining marks: Bengali and Devanagari vowel signs are part of the word.
+    .replace(/[^\p{L}\p{M}\p{N}\s']/gu, ' ')
     .split(/\s+/)
     .filter(Boolean)
+
+/** Edit distance between two words (small inputs only). */
+function distance(a: string, b: string): number {
+  const row = Array.from({ length: b.length + 1 }, (_, i) => i)
+  for (let i = 1; i <= a.length; i++) {
+    let previous = row[0]!
+    row[0] = i
+    for (let j = 1; j <= b.length; j++) {
+      const current = row[j]!
+      row[j] = Math.min(row[j]! + 1, row[j - 1]! + 1, previous + (a[i - 1] === b[j - 1] ? 0 : 1))
+      previous = current
+    }
+  }
+  return row[b.length]!
+}
+
+/**
+ * Close enough to be the same spoken word: speech models and transcribers often differ by a
+ * letter or a vowel sign, especially outside English.
+ */
+export function sameWord(heard: string, written: string): boolean {
+  if (heard === written) return true
+  const longest = Math.max(heard.length, written.length)
+  if (longest < 4) return false
+  return distance(heard, written) / longest <= 0.34
+}
 
 /**
  * Scene-local time (seconds) for each beat: when its phrase is spoken, found in the narration's
@@ -89,7 +121,7 @@ export function beatTimes(scene: Scene, words: WordTime[] | undefined): number[]
     let hit: number | null = null
     if (phrase.length > 0 && words) {
       for (let i = from; i <= spoken.length - phrase.length; i++) {
-        if (phrase.every((token, k) => spoken[i + k] === token)) {
+        if (phrase.every((token, k) => sameWord(spoken[i + k] ?? '', token))) {
           hit = i
           break
         }

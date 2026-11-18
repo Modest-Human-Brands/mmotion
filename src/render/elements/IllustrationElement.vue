@@ -19,7 +19,8 @@ const motion = computed(() => ({
       data-enter
       :src="image.url"
       alt=""
-      class="max-h-full max-w-full object-contain mix-blend-multiply"
+      class="max-h-full max-w-full object-contain"
+      :class="image.framed ? 'rounded-(--radius) shadow-[0_2cqmin_6cqmin_#0003]' : 'cutout'"
       :style="motion"
     />
     <div
@@ -39,3 +40,17 @@ const motion = computed(() => ({
     </div>
   </div>
 </template>
+
+<style scoped>
+/* A figure drawn on white melts into a light scene colour. */
+.cutout {
+  mix-blend-mode: multiply;
+}
+/* On a dark scene that would darken the whole figure, so it sits on a soft light card. */
+[data-tone='dark'] .cutout {
+  mix-blend-mode: normal;
+  background: #fff;
+  border-radius: var(--radius);
+  box-shadow: 0 2cqmin 6cqmin #0004;
+}
+</style>

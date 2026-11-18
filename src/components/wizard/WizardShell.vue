@@ -2,7 +2,8 @@
 import { useRouter } from 'vue-router'
 
 import UiStepper from '@/components/ui/UiStepper.vue'
-import { STEPS, useProjectStore } from '@/stores/project'
+import { STEPS, stepIndex, useProjectStore } from '@/stores/project'
+import { useSettingsStore } from '@/stores/settings'
 
 defineProps<{
   step: number
@@ -12,6 +13,7 @@ defineProps<{
 
 const router = useRouter()
 const project = useProjectStore()
+const settings = useSettingsStore()
 
 async function cancel() {
   if (
@@ -47,7 +49,12 @@ async function cancel() {
         </button>
       </header>
 
-      <UiStepper :steps="STEPS.map((s) => s.label)" :current="step" />
+      <UiStepper
+        :steps="STEPS.map((s) => s.label)"
+        :current="step"
+        :reachable="project.busy ? -1 : stepIndex(project.reachable)"
+        @go="router.push(STEPS[$event]!.path)"
+      />
 
       <div class="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto pr-1 scrollbar-none">
         <div class="flex flex-col gap-1">
@@ -57,6 +64,13 @@ async function cancel() {
         <slot />
       </div>
 
+      <p
+        v-if="settings.waiting"
+        class="rounded-md bg-warning-500/15 px-3 py-2 text-xs text-warning-400"
+        role="status"
+      >
+        {{ settings.waiting }}
+      </p>
       <footer class="flex flex-col gap-4">
         <hr class="h-px border-0 bg-dark-600" />
         <div class="flex min-h-9.25 items-center justify-between gap-4">

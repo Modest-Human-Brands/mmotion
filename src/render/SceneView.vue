@@ -12,6 +12,7 @@ import IllustrationElement from './elements/IllustrationElement.vue'
 import LogoReveal from './elements/LogoReveal.vue'
 import QuoteElement from './elements/QuoteElement.vue'
 import RadialDiagram from './elements/RadialDiagram.vue'
+import ShowcaseElement from './elements/ShowcaseElement.vue'
 import SlidersElement from './elements/SlidersElement.vue'
 import SpeechBubble from './elements/SpeechBubble.vue'
 import SplitCards from './elements/SplitCards.vue'
@@ -19,6 +20,8 @@ import StatElement from './elements/StatElement.vue'
 import type { ImageState } from './elements/types'
 import SceneBackground from './SceneBackground.vue'
 import SceneChrome from './SceneChrome.vue'
+import { isDark } from '@/core/templates'
+
 import { paletteVars } from './theme'
 import { useEnterMotion } from './useEnterMotion'
 
@@ -34,6 +37,7 @@ const ELEMENTS: Record<Exclude<ElementKind, 'none'>, Component> = {
   stat: StatElement,
   quote: QuoteElement,
   logoReveal: LogoReveal,
+  showcase: ShowcaseElement,
 }
 
 const props = defineProps<{
@@ -63,7 +67,12 @@ useEnterMotion(
 </script>
 
 <template>
-  <div ref="root" class="absolute inset-0 overflow-hidden" :style="paletteVars(palette)">
+  <div
+    ref="root"
+    class="absolute inset-0 overflow-hidden"
+    :style="paletteVars(palette)"
+    :data-tone="isDark(palette.background) ? 'dark' : 'light'"
+  >
     <SceneBackground :kind="template.background" :seconds="seconds" />
     <SceneChrome
       :scene="scene"

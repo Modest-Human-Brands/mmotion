@@ -66,6 +66,13 @@ import IListChecks from '~icons/lucide/list-checks'
 import IMegaphone from '~icons/lucide/megaphone'
 import IHandshake from '~icons/lucide/handshake'
 import IHeadphones from '~icons/lucide/headphones'
+import IShieldCheck from '~icons/lucide/shield-check'
+import IFeather from '~icons/lucide/feather'
+import IShoppingBag from '~icons/lucide/shopping-bag'
+import ICar from '~icons/lucide/car'
+import IBike from '~icons/lucide/bike'
+import IPackage from '~icons/lucide/package'
+import ICamera from '~icons/lucide/camera'
 
 /** Icons the agents may name in diagrams. Bundled at build time; unknown names render nothing. */
 export const ICONS: Record<string, Component> = {
@@ -135,6 +142,13 @@ export const ICONS: Record<string, Component> = {
   megaphone: IMegaphone,
   handshake: IHandshake,
   headphones: IHeadphones,
+  'shield-check': IShieldCheck,
+  feather: IFeather,
+  'shopping-bag': IShoppingBag,
+  car: ICar,
+  bike: IBike,
+  package: IPackage,
+  camera: ICamera,
 }
 
 export const ICON_NAMES = Object.keys(ICONS)

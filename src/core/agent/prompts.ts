@@ -4,27 +4,64 @@ import {
   TRANSITIONS,
   type Composition,
 } from '@/core/composition/schema'
-import { TEMPLATES, type Template } from '@/core/templates'
+import { getKind } from '@/core/kinds'
+import { STYLES, sceneStyle } from '@/core/styles'
+import { TEMPLATES, getTemplate } from '@/core/templates'
 import { ICON_NAMES } from '@/render/icons'
 
-export function templateGuide(template: Template): string {
-  return `Template "${template.name}": ${template.description}
-Story arc for this template: ${template.arc}
-Preferred visual elements: ${template.elements.join(', ')}.`
+/** What the user asked for in the brief; every field may be empty. */
+export interface Brief {
+  goal: string
+  audience: string
+  tone: string
+  /** Call to action for the close. */
+  cta: string
+  /** Target length in seconds; 0 = let the script decide. */
+  length: number
+}
+
+/** Average words spoken per second of narration (English; the writer adapts for others). */
+const WORDS_PER_SECOND = 2.4
+
+/** The kind, look, length and brief, as the writer and director read them. */
+export function guide(kindId: string, lookId: string, brief: Partial<Brief> = {}): string {
+  const kind = getKind(kindId)
+  const look = getTemplate(lookId)
+  const [min, max] = kind.sceneSeconds
+  const lines = [
+    `Kind of video: ${kind.name}. ${kind.description}`,
+    `Story arc: ${kind.arc}`,
+    `Pacing: ${min}-${max} seconds of narration per scene.`,
+    `Look "${look.name}": ${look.description}`,
+    `Preferred visual elements: ${kind.elements.join(', ')}.`,
+  ]
+  if (brief.length) {
+    const scenes = Math.max(2, Math.round(brief.length / ((min + max) / 2)))
+    lines.push(
+      `Target length: about ${brief.length} seconds in total: about ${Math.round(brief.length * WORDS_PER_SECOND)} words of narration over about ${scenes} scenes. Cut or condense the script to fit; never pad it with invented content.`,
+    )
+  }
+  if (brief.goal?.trim()) lines.push(`Goal of the video: ${brief.goal.trim()}`)
+  if (brief.audience?.trim()) lines.push(`Audience: ${brief.audience.trim()}`)
+  if (brief.tone?.trim()) lines.push(`Tone of voice: ${brief.tone.trim()}`)
+  if (brief.cta?.trim()) lines.push(`Close with this call to action: ${brief.cta.trim()}`)
+  return lines.join('\n')
 }
 
 // ------------------------------------------------------------------ pass 1: story
 
-export const STORY_SYSTEM = `You are a scriptwriter and story editor for short animated explainer videos.
+export const STORY_SYSTEM = `You are a scriptwriter and story editor for short animated motion videos (explainers, tutorials, launches, ads, data stories and more).
 Turn the user's script into a story: chapters, recurring characters and scenes with narration.
 Rules:
-- Follow the template's story arc, but never invent facts, statistics, names or quotes that are not in the script.
+- Follow the kind's story arc and pacing, but never invent facts, statistics, names or quotes that are not in the script.
+- If the script is an outline with SCENE / VISUAL / NARRATION lines, keep its chapters, scenes, headlines and narration as written (the VISUAL lines are for the art director, never narration).
 - If the script is narration (a voiceover), keep its wording: split it across scenes in order, one to three sentences per scene, covering every sentence exactly once. If it is an outline, write natural narration from it.
-- One idea per scene; a scene's narration lasts about 4 to 9 seconds.
+- One idea per scene; keep each scene's narration within the pacing given.
 - headline: the on-screen title of the scene, max 7 words.
 - caption: words the viewer reads under the picture, in the audience's voice, max 8 words, e.g. "Tears. Covered ears. Overwhelm." or "Speak gently.". Never describe the picture, layout or graphic ("Diagram of…", "Mother looks…", "Text overlay"). "" if the headline says enough.
 - step: for numbered practical steps write "01/05", "02/05" …, otherwise "".
 - chapters: 3 to 7 sections with a short label (max 4 words) like "Everyday parenting" or "Small steps can help". tone "dark" only for the closing brand chapter.
+- visual: what the scene should show, one short line: the script's VISUAL hint if it has one, else your idea ("Mother comforts Son at the party", "diagram of the five senses").
 - chapter: the 0-based index of the scene's chapter; scenes stay in chapter order.
 - cast: if the story has people, define each recurring character once with a precise visual description (age, hair, skin, clothing colours, shoes) that an illustrator can repeat exactly. Use plain names like "Mother", "Son". Empty list if there are no people.`
 
@@ -60,12 +97,13 @@ export const storySchema = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['chapter', 'headline', 'step', 'caption', 'voiceover'],
+        required: ['chapter', 'headline', 'step', 'caption', 'visual', 'voiceover'],
         properties: {
           chapter: { type: 'integer' },
           headline: { type: 'string' },
           step: { type: 'string' },
           caption: { type: 'string' },
+          visual: { type: 'string' },
           voiceover: { type: 'string' },
         },
       },
@@ -76,7 +114,7 @@ export const storySchema = {
 // --------------------------------------------------------------- pass 2: direction
 
 export const ELEMENT_GUIDE = `Visual elements (one per scene) and the fields each uses (leave the others empty):
-- illustration: a picture of the cast. prompt = what happens, using cast names, pose and setting, one sentence, no text in the image ("Mother kneels beside Son who covers his ears at a noisy birthday party"). cast = names in the picture.
+- illustration: a picture of the cast. prompt = what happens, using cast names, pose and setting, one sentence, no text in the image ("Mother kneels beside Son who covers his ears at a noisy birthday party"). One moment per picture: never panels, split screens, before/after or a sequence, and each person appears once (use splitCards to compare two moments). cast = names in the picture.
 - radialDiagram: a hub with 3-6 nodes around it. center = {label, icon}; items = nodes {label, icon}.
 - chips: 3-6 floating tags around a short centre sentence. text = the sentence; items = tags {label}.
 - sliders: 3-6 labelled level sliders that rise. items = {label, icon}.
@@ -86,7 +124,8 @@ export const ELEMENT_GUIDE = `Visual elements (one per scene) and the fields eac
 - bigWord: one or two huge words. text = the words; subtext = a short line.
 - stat: a big number that counts up. text = the number with unit ("40%"); subtext = what it measures.
 - quote: text = the quote; subtext = who said it.
-- logoReveal: the brand logo for the final scene. text = the brand promise or tagline (max 5 words).
+- logoReveal: the brand logo for the final scene. text = the brand promise or tagline (max 5 words). If the cast has a logo object, cast = [its name].
+- showcase: the real image of a cast object marked "exact" (logo, product, app screen), shown as it is. cast = [its name]. Only for exact objects.
 - none: the headline alone as a large statement.
 Labels are real words from the story ("Sound", "Tired?", "Quieter space"), never placeholders like "Item 1" or "Volume 2".
 Icons: only these names, or "": ${ICON_NAMES.join(', ')}.
@@ -98,8 +137,8 @@ Beats make the visual react to the narration. at = a short exact phrase (2-4 wor
 - caption text=…: swap the caption card text (for narration with two or three parts).
 Use 0-5 beats per scene. Illustrated scenes usually only need caption beats.`
 
-export const DIRECTION_SYSTEM = `You are the art director of an animated explainer video. For each scene you receive (headline, caption, narration), choose ONE visual element from the library, fill its fields, and add beats that sync it to the narration.
-Prefer illustrations of the cast for human moments, and diagrams for explanations, lists and processes. Avoid the same element in more than two scenes in a row. The last scene of a dark brand chapter uses logoReveal.
+export const DIRECTION_SYSTEM = `You are the art director of an animated motion video. For each scene you receive (headline, caption, narration), choose ONE visual element from the library, fill its fields, and add beats that sync it to the narration.
+When the script gave VISUAL: hints, they appear in the narration listing; follow them. Prefer illustrations of the cast for human moments, and diagrams for explanations, lists and processes. Avoid the same element in more than two scenes in a row. The last scene of a dark brand chapter uses logoReveal.
 Every field must be present; use "" or [] for unused ones and {"label":"","icon":"","detail":""} for an unused center. n is the scene number you were given.
 ${ELEMENT_GUIDE}`
 
@@ -156,10 +195,10 @@ export const directionSchema = {
 
 // --------------------------------------------------------------------- edits
 
-export const EDIT_SYSTEM = `You are the editor of an existing animated explainer video. The user asks for a change; you return the smallest set of operations that makes it. Do not touch scenes the user did not mention.
+export const EDIT_SYSTEM = `You are the editor of an existing animated motion video. The user asks for a change; you return the smallest set of operations that makes it. Do not touch scenes the user did not mention.
 Each operation is {op, sceneId, afterSceneId, data}. "data" is a JSON object encoded as a string ("" when the op needs none). Unused id fields are "".
 Operations:
-- updateScene: sceneId + data with only what changes, e.g. "{\\"chrome\\":{\\"headline\\":\\"New title\\"}}". Fields: chrome {headline, step, caption}; element {kind, prompt, cast, items, center, text, subtext} (items replaces the whole list); beats (replaces the whole list); voiceover; duration (seconds); transition (${TRANSITIONS.join(', ')}); chapterId.
+- updateScene: sceneId + data with only what changes, e.g. "{\\"chrome\\":{\\"headline\\":\\"New title\\"}}". Fields: chrome {headline, step, caption}; brief (what the visual should show, in words); element {kind, prompt, cast, items, center, text, subtext} (items replaces the whole list); beats (replaces the whole list); voiceover; duration (seconds); transition (${TRANSITIONS.join(', ')}); chapterId.
 - addScene: afterSceneId ("" = at the start) + data with chapterId, chrome, element, beats, voiceover.
 - removeScene: sceneId. moveScene: sceneId + afterSceneId.
 - regenerateIllustration: sceneId. A new take of that scene's picture with the same description.
@@ -167,11 +206,13 @@ Operations:
 - addChapter: afterSceneId = chapter id to insert after ("" = first), data {"id":"…","title":"…","tone":"light"}.
 - updateCast: data {"members":[{"name":"Mother","description":"…"}]}. Changing a description redraws every picture of that character.
 - setBrand: data with any of name, primary, accent, background, text (hex like "#1a2b3c"), fontDisplay, fontBody (Google Font names).
-- setTemplate: data {"templateId": one of ${TEMPLATES.map((template) => template.id).join(', ')}}.
+- setTemplate: change the look (layout, type, colours, motion). data {"templateId": one of ${TEMPLATES.map((template) => `${template.id} (${template.name})`).join(', ')}}.
+- setStyle: change the art style of the pictures. sceneId = a scene id or chapter id for just that part, "" for the whole video; data {"styleId": one of the styles below, or "" to inherit}. Pictures redraw automatically.
 - setMeta: data with title and/or format (portrait, landscape, square).
 To change what a picture shows, update element.prompt (and cast); it is redrawn automatically.
 When narration changes, keep beats' "at" phrases present in the new narration.
 reply: one short sentence telling the user what you changed (or why you could not).
+Art styles: ${STYLES.map((style) => `${style.id} (${style.name})`).join(', ')}.
 ${ELEMENT_GUIDE}`
 
 export const editSchema = {
@@ -200,6 +241,7 @@ export const editSchema = {
               'updateCast',
               'setBrand',
               'setTemplate',
+              'setStyle',
               'setMeta',
             ],
           },
@@ -230,7 +272,9 @@ export function describeComposition(composition: Composition): string {
     compact({
       title: composition.title,
       format: composition.format,
+      kind: getKind(composition.kindId).name,
       templateId: composition.templateId,
+      styleId: sceneStyle(composition).id,
       brand,
       cast: composition.cast.members,
       chapters: composition.chapters,
@@ -244,6 +288,7 @@ export function describeComposition(composition: Composition): string {
         voiceover: scene.voiceover,
         duration: scene.duration,
         transition: scene.transition,
+        styleId: scene.styleId,
       })),
     }),
   )

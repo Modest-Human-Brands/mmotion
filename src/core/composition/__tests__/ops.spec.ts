@@ -1,17 +1,28 @@
 import { describe, expect, it } from 'vite-plus/test'
 
 import { applyOps, parseRawOp, type EditOp } from '../ops'
-import { emptyElement, type Composition, type Scene } from '../schema'
-import { activeSpans, beatTimes, sceneSpans, totalSeconds, VOICE_LEAD } from '../timing'
+import {
+  DEFAULT_VOICE,
+  castMember,
+  compositionSchema,
+  emptyElement,
+  spokenWords,
+  type Composition,
+  type Scene,
+} from '../schema'
+import { activeSpans, beatTimes, sameWord, sceneSpans, totalSeconds, VOICE_LEAD } from '../timing'
 
 const scene = (partial: Partial<Scene> & Pick<Scene, 'id'>): Scene => ({
   chapterId: 'c1',
   chrome: { headline: '', step: '', caption: '' },
+  brief: '',
   element: emptyElement(),
   beats: [],
   voiceover: '',
+  voiceTake: 0,
   duration: 3,
   transition: 'fade',
+  styleId: '',
   ...partial,
 })
 
@@ -21,6 +32,8 @@ const composition = (): Composition => ({
   format: 'portrait',
   fps: 30,
   templateId: 'soft-explainer',
+  kindId: 'explainer',
+  styleId: '',
   brand: {
     name: 'Acme',
     logo: '',
@@ -31,10 +44,13 @@ const composition = (): Composition => ({
     fontDisplay: 'Lora',
     fontBody: 'Inter',
   },
-  cast: { members: [{ name: 'Mother', description: 'yellow kurta' }], seed: 7 },
+  cast: { members: [castMember('Mother', 'yellow kurta')], seed: 7 },
+  voice: DEFAULT_VOICE,
+  language: 'en',
+  commercial: false,
   chapters: [
-    { id: 'c1', title: 'Everyday', tone: 'light' },
-    { id: 'c2', title: 'Brand', tone: 'dark' },
+    { id: 'c1', title: 'Everyday', tone: 'light', styleId: '' },
+    { id: 'c2', title: 'Brand', tone: 'dark', styleId: '' },
   ],
   scenes: [
     scene({
@@ -146,9 +162,39 @@ describe('applyOps', () => {
       },
     ])
     expect(next.cast.members).toEqual([
-      { name: 'Mother', description: 'green saree' },
-      { name: 'Son', description: 'orange t-shirt' },
+      castMember('Mother', 'green saree'),
+      castMember('Son', 'orange t-shirt'),
     ])
+  })
+
+  it('keeps sheets and references when a description changes, and never edits locked members', () => {
+    const base = composition()
+    base.cast.members = [
+      castMember('Mother', 'yellow kurta', { sheet: 'a1', refs: ['r1'] }),
+      castMember('Logo', 'green leaf', { kind: 'object', exact: true, locked: true }),
+    ]
+    const { composition: next, errors } = applyOps(base, [
+      { op: 'updateCast', members: [{ name: 'Mother', description: 'green saree' }] },
+      { op: 'updateCast', members: [{ name: 'Logo', description: 'blue leaf' }] },
+    ])
+    expect(next.cast.members[0]).toMatchObject({
+      description: 'green saree',
+      sheet: 'a1',
+      refs: ['r1'],
+    })
+    expect(next.cast.members[1]!.description).toBe('green leaf')
+    expect(errors).toEqual(['updateCast: Logo is locked; unlock them in Cast first'])
+  })
+
+  it('reads old projects without the new cast and voice fields', () => {
+    const old = JSON.parse(JSON.stringify(composition())) as Record<string, unknown>
+    delete old.voice
+    ;(old.cast as { members: unknown[] }).members = [{ name: 'Mother', description: 'kurta' }]
+    for (const scene of old.scenes as Record<string, unknown>[]) delete scene.brief
+    const parsed = compositionSchema.parse(old)
+    expect(parsed.voice).toEqual(DEFAULT_VOICE)
+    expect(parsed.cast.members[0]).toEqual(castMember('Mother', 'kurta'))
+    expect(parsed.scenes[0]!.brief).toBe('')
   })
 
   it('keeps going past bad ops and never breaks the document', () => {
@@ -210,6 +256,34 @@ describe('timing', () => {
     expect(times[1]).toBeLessThan(times[2]!)
   })
 
+  it('matches Bengali and Hindi words, vowel signs included', () => {
+    const bengali = scene({
+      id: 'bn',
+      duration: 5,
+      voiceover: 'শান্ত থাকুন এবং আস্তে কথা বলুন।',
+      beats: [{ at: 'আস্তে কথা', action: 'caption', target: 0, text: '' }],
+    })
+    const times = beatTimes(bengali, [
+      { word: 'শান্ত', start: 0, end: 0.4 },
+      { word: 'থাকুন', start: 0.5, end: 0.9 },
+      { word: 'এবং', start: 1, end: 1.2 },
+      { word: 'আস্তে', start: 1.3, end: 1.7 },
+      { word: 'কথা', start: 1.8, end: 2.1 },
+    ])
+    expect(times[0]).toBeCloseTo(VOICE_LEAD + 1.3)
+  })
+
+  it('tolerates small spelling differences from the transcriber', () => {
+    expect(sameWord('তাজাজাল', 'তাজা')).toBe(false)
+    expect(sameWord('অপিক্ষা', 'অপেক্ষা')).toBe(true)
+    expect(sameWord('quieter', 'quiet')).toBe(true)
+    expect(sameWord('cat', 'hat')).toBe(false)
+  })
+
+  it('ignores delivery tags when estimating length', () => {
+    expect(spokenWords('[whisper] Speak gently. [pause]')).toBe('Speak gently.')
+  })
+
   it('spreads beats evenly without word timings', () => {
     const times = beatTimes(
       scene({
@@ -225,5 +299,38 @@ describe('timing', () => {
     expect(times[0]).toBeGreaterThan(0.6)
     expect(times[1]).toBeGreaterThan(times[0]!)
     expect(times[1]).toBeLessThan(5)
+  })
+})
+describe('art styles', () => {
+  it('sets the style of the video, a chapter or a scene, and rejects unknown ones', () => {
+    const base = composition()
+    const known = (id: string) => ['watercolour', 'anime'].includes(id)
+    const chapterId = base.chapters[0]!.id
+    const sceneId = base.scenes[0]!.id
+    const { composition: next, errors } = applyOps(
+      base,
+      [
+        { op: 'setStyle', styleId: 'watercolour', targetId: null },
+        { op: 'setStyle', styleId: 'anime', targetId: chapterId },
+        { op: 'setStyle', styleId: 'anime', targetId: sceneId },
+        { op: 'setStyle', styleId: 'crayon', targetId: null },
+      ],
+      () => true,
+      known,
+    )
+    expect(next.styleId).toBe('watercolour')
+    expect(next.chapters[0]!.styleId).toBe('anime')
+    expect(next.scenes[0]!.styleId).toBe('anime')
+    expect(errors.join()).toMatch(/unknown style "crayon"/)
+  })
+
+  it('keeps a chapter style when a patch leaves it out', () => {
+    const op = parseRawOp({
+      op: 'updateChapter',
+      sceneId: 'c1',
+      afterSceneId: '',
+      data: '{"title":"New"}',
+    })
+    expect(op).toEqual({ op: 'updateChapter', chapterId: 'c1', patch: { title: 'New' } })
   })
 })

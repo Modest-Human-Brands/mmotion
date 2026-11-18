@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, useTemplateRef } from 'vue'
+import { computed, nextTick, onMounted, ref, useTemplateRef } from 'vue'
 import { useRouter } from 'vue-router'
 
 import UiButton from '@/components/ui/UiButton.vue'
@@ -12,7 +12,8 @@ import { safeFileName, saveBlob } from '@/domain/download'
 import { drawElement, prepareFonts } from '@/domain/export/compose'
 import { ExportCancelled, exportVideo, type VideoQuality } from '@/domain/export/videoExport'
 import VideoPlayer from '@/render/VideoPlayer.vue'
-import { STEPS, useProjectStore } from '@/stores/project'
+import { usePicturesStore } from '@/stores/pictures'
+import { STEPS, stepIndex, useProjectStore } from '@/stores/project'
 
 defineOptions({ name: 'ExportStep' })
 
@@ -20,6 +21,8 @@ type Format = 'mp4' | 'png'
 
 const router = useRouter()
 const project = useProjectStore()
+// The export mixes the narration; a restored project records (or loads) it first.
+onMounted(() => project.ensureVoices())
 const player = useTemplateRef<InstanceType<typeof VideoPlayer>>('player')
 
 const FORMAT_OPTIONS: { value: Format; label: string }[] = [
@@ -46,6 +49,7 @@ const error = ref<string | null>(null)
 const lastFile = ref<string | null>(null)
 let controller: AbortController | null = null
 
+const pictures = usePicturesStore()
 const composition = computed(() => project.composition)
 /** The player shows this time while exporting, and the studio's time otherwise. */
 const exportSeconds = ref<number | null>(null)
@@ -54,7 +58,7 @@ const seconds = computed(
 )
 
 const pendingPictures = computed(
-  () => project.illustrations.total - project.illustrations.done - project.illustrations.failed,
+  () => pictures.progress.total - pictures.progress.done - pictures.progress.failed,
 )
 
 const size = computed(() => (composition.value ? FORMATS[composition.value.format] : null))
@@ -138,7 +142,7 @@ async function download() {
 <template>
   <WizardShell
     v-if="composition"
-    :step="3"
+    :step="stepIndex('studio')"
     title="Export"
     subtitle="Rendered in your browser. Nothing is uploaded."
   >
@@ -194,7 +198,9 @@ async function download() {
     }}</template>
     <template #actions>
       <UiButton v-if="busy" variant="ghost" @click="controller?.abort()">Cancel</UiButton>
-      <UiButton v-else variant="ghost" @click="router.push(STEPS[3].path)">Back to studio</UiButton>
+      <UiButton v-else variant="ghost" @click="router.push(STEPS[stepIndex('studio')].path)"
+        >Back to studio</UiButton
+      >
       <UiButton :disabled="busy" @click="download">
         {{ busy ? 'Rendering…' : format === 'mp4' ? 'Render video' : 'Download PNG' }}
       </UiButton>
@@ -205,7 +211,7 @@ async function download() {
         ref="player"
         :composition="composition"
         :seconds="seconds"
-        :media="project.media"
+        :media="pictures.media"
         label="Final preview"
       />
     </template>

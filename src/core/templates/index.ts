@@ -1,10 +1,4 @@
-import type {
-  BrandTokens,
-  Chapter,
-  ElementKind,
-  FormatId,
-  TransitionId,
-} from '@/core/composition/schema'
+import type { BrandTokens, Chapter, FormatId, TransitionId } from '@/core/composition/schema'
 import type { OrganizationProfile } from '@/domain/organization'
 import { hexToHsl, hslToHex, normalizeHex } from '@/domain/proceduralGradient'
 
@@ -12,19 +6,22 @@ export type EnterMotion = 'rise' | 'pop' | 'wipe' | 'blur'
 export type BackgroundKind = 'shapes' | 'grid' | 'gradient' | 'blocks'
 
 /**
- * A template is a design system plus a storytelling kit: how scenes are dressed (chrome, type,
- * colour per chapter, background, motion), how illustrations look, and which story arc and
- * visual elements suit it. Pure data; components read it through CSS variables.
+ * A look is a design system: how scenes are dressed (chrome, type, colour per chapter, background,
+ * motion). The story's shape comes from the kind (`core/kinds`) and how pictures are drawn from the
+ * art style (`core/styles`). Pure data; components read it through CSS variables. Stored in the
+ * composition as `templateId`.
  */
 export interface Template {
   id: string
   name: string
-  /** Read by the language models when they write or edit in this template. */
+  /** One line for the picker. */
+  blurb: string
+  /** Read by the language models when they write or edit in this look. */
   description: string
   format: FormatId
   /** Headline and visual placement: `left` = editorial (eyebrow, heading top-left, caption card). */
   align: 'left' | 'center'
-  /** Heading font the template is designed around; the brand font is used for body text. */
+  /** Heading font the look is designed around; the brand font is used for body text. */
   displayFont?: string
   /** `pastel`: a soft colour per chapter derived from the brand accent; `brand`: brand colours throughout. */
   palette: 'pastel' | 'brand'
@@ -40,32 +37,18 @@ export interface Template {
   motion: { enter: EnterMotion; ease: string; stagger: number; duration: number }
   transitions: TransitionId[]
   radius: number
-  /** Appended to every illustration prompt so all pictures share one look. */
-  illustrationStyle: string
-  /** Story structure the story agent follows. */
-  arc: string
-  /** Visual elements that suit the template, in rough order of preference. */
-  elements: ElementKind[]
+  /** Art style that suits the look when the kind does not say otherwise. */
+  style: string
 }
-
-const ALL_DIAGRAMS: ElementKind[] = [
-  'radialDiagram',
-  'chips',
-  'sliders',
-  'checklist',
-  'speechBubble',
-  'splitCards',
-  'bigWord',
-  'stat',
-  'quote',
-]
+export type Look = Template
 
 export const TEMPLATES: Template[] = [
   {
     id: 'soft-explainer',
-    name: 'Soft Explainer',
+    name: 'Soft',
+    blurb: 'Warm editorial, a pastel colour per chapter',
     description:
-      'Warm, calm explainer for parents, health and education. Editorial layout: small uppercase chapter label, elegant serif headline top-left, one visual in the middle (a gentle flat illustration of the recurring characters or a simple diagram), a rounded caption card underneath. Each chapter has its own soft pastel colour; the closing chapter is dark in the brand colour with the logo. Unhurried pacing, one idea per scene, captions change as the narration moves on.',
+      'Warm and calm. Editorial layout: small uppercase chapter label, elegant serif headline top-left, one visual in the middle, a rounded caption card underneath. Each chapter has its own soft pastel colour; the closing chapter is dark in the brand colour with the logo. Unhurried motion.',
     format: 'portrait',
     align: 'left',
     displayFont: 'Lora',
@@ -76,16 +59,14 @@ export const TEMPLATES: Template[] = [
     motion: { enter: 'rise', ease: 'power2.out', stagger: 0.14, duration: 0.8 },
     transitions: ['fade', 'slide'],
     radius: 0.025,
-    illustrationStyle:
-      'Flat children-book illustration, soft pastel palette, clean thin outlines, gentle shading, soft ground shadow, plain white background, no text, no frame.',
-    arc: 'Hook with a relatable everyday moment → name the problem → explain how it works (diagrams) → reassure → numbered practical steps (STEP 01/05 …) → warm closing thought → dark brand chapter with the promise and logo.',
-    elements: ['illustration', ...ALL_DIAGRAMS, 'logoReveal'],
+    style: 'storybook',
   },
   {
     id: 'minimal-tech',
-    name: 'Minimal Tech',
+    name: 'Minimal tech',
+    blurb: 'Dark canvas, fine grid, crisp type',
     description:
-      'Calm product-launch look: dark canvas, fine grid, crisp sans headings rising into place, generous whitespace, accent used sparingly. Prefers diagrams, stats and checklists over illustrations. Short sentences, one idea per scene.',
+      'Calm and precise: dark canvas, fine grid, crisp sans headings rising into place, generous whitespace, accent used sparingly. Short sentences, one idea per scene.',
     format: 'landscape',
     align: 'center',
     palette: 'brand',
@@ -95,24 +76,12 @@ export const TEMPLATES: Template[] = [
     motion: { enter: 'rise', ease: 'power3.out', stagger: 0.12, duration: 0.7 },
     transitions: ['fade', 'slide'],
     radius: 0.02,
-    illustrationStyle:
-      'Minimal isometric 3D render, matte materials, soft studio light, dark neutral background, no text.',
-    arc: 'Hook → problem → product → three key features (diagrams, stats) → proof → call to action with logo.',
-    elements: [
-      'bigWord',
-      'stat',
-      'checklist',
-      'sliders',
-      'radialDiagram',
-      'chips',
-      'splitCards',
-      'illustration',
-      'logoReveal',
-    ],
+    style: 'isometric',
   },
   {
     id: 'bold-editorial',
-    name: 'Bold Editorial',
+    name: 'Bold editorial',
+    blurb: 'Huge uppercase type, hard cuts',
     description:
       'Loud magazine energy: huge uppercase headings, hard cuts and wipes, solid colour blocks in the accent colour, fast pacing with punchy three-to-five word statements and big numbers.',
     format: 'portrait',
@@ -124,25 +93,14 @@ export const TEMPLATES: Template[] = [
     motion: { enter: 'wipe', ease: 'expo.out', stagger: 0.08, duration: 0.55 },
     transitions: ['cut', 'wipe'],
     radius: 0,
-    illustrationStyle:
-      'Bold graphic poster illustration, high contrast, limited flat colours, thick shapes, white background, no text.',
-    arc: 'Provocative statement → three to five punchy points (big words, stats, chips) → one quote → loud call to action with logo.',
-    elements: [
-      'bigWord',
-      'stat',
-      'chips',
-      'quote',
-      'checklist',
-      'illustration',
-      'splitCards',
-      'logoReveal',
-    ],
+    style: 'pop-art',
   },
   {
     id: 'soft-gradient',
-    name: 'Soft Gradient',
+    name: 'Gradient',
+    blurb: 'Drifting brand gradients, rounded cards',
     description:
-      'Friendly and modern: drifting brand-colour gradients, rounded cards, headings that softly pop in, gentle crossfades and zooms. Conversational, benefit-led copy with friendly illustrations and simple diagrams.',
+      'Friendly and modern: drifting brand-colour gradients, rounded cards, headings that softly pop in, gentle crossfades and zooms.',
     format: 'landscape',
     align: 'center',
     palette: 'brand',
@@ -152,21 +110,82 @@ export const TEMPLATES: Template[] = [
     motion: { enter: 'pop', ease: 'back.out(1.6)', stagger: 0.14, duration: 0.8 },
     transitions: ['fade', 'zoom'],
     radius: 0.035,
-    illustrationStyle:
-      'Friendly rounded vector illustration, soft gradients, playful proportions, plain white background, no text.',
-    arc: 'Friendly hook → the everyday pain → how it gets better (illustrations, splitCards) → benefits (checklist, stat) → invitation with logo.',
-    elements: [
-      'illustration',
-      'splitCards',
-      'checklist',
-      'stat',
-      'chips',
-      'radialDiagram',
-      'speechBubble',
-      'logoReveal',
-    ],
+    style: 'flat-vector',
+  },
+  {
+    id: 'corporate-clean',
+    name: 'Corporate clean',
+    blurb: 'Light, structured, trustworthy',
+    description:
+      'Clear and trustworthy: light background with a faint grid, confident sans headings, brand colour for emphasis, tidy alignment, measured slides. Suits data, reports and B2B.',
+    format: 'landscape',
+    align: 'left',
+    displayFont: 'Inter',
+    palette: 'brand',
+    theme: 'light',
+    background: 'grid',
+    type: { headingScale: 0.075, headingWeight: 700, uppercase: false, tracking: '-0.015em' },
+    motion: { enter: 'rise', ease: 'power2.out', stagger: 0.1, duration: 0.6 },
+    transitions: ['slide', 'fade'],
+    radius: 0.015,
+    style: 'isometric',
+  },
+  {
+    id: 'playful',
+    name: 'Playful',
+    blurb: 'Bouncy, round and colourful',
+    description:
+      'Cheerful and bouncy: rounded heavy headings that pop in with overshoot, floating soft shapes, a fresh pastel per chapter, zooms between scenes. Suits events, kids and friendly brands.',
+    format: 'square',
+    align: 'center',
+    displayFont: 'Baloo 2',
+    palette: 'pastel',
+    theme: 'light',
+    background: 'shapes',
+    type: { headingScale: 0.09, headingWeight: 800, uppercase: false, tracking: '0em' },
+    motion: { enter: 'pop', ease: 'back.out(2.2)', stagger: 0.1, duration: 0.6 },
+    transitions: ['zoom', 'slide'],
+    radius: 0.05,
+    style: 'sticker',
+  },
+  {
+    id: 'cinematic',
+    name: 'Cinematic',
+    blurb: 'Dark, slow and dramatic',
+    description:
+      'Film-like and emotional: deep dark gradients, elegant serif headings that resolve out of a blur, slow crossfades, lots of breathing room. Suits stories, testimonials and manifestos.',
+    format: 'landscape',
+    align: 'center',
+    displayFont: 'Playfair Display',
+    palette: 'brand',
+    theme: 'dark',
+    background: 'gradient',
+    type: { headingScale: 0.08, headingWeight: 500, uppercase: false, tracking: '0em' },
+    motion: { enter: 'blur', ease: 'power2.out', stagger: 0.2, duration: 1.1 },
+    transitions: ['fade', 'zoom'],
+    radius: 0.01,
+    style: 'cinematic-photo',
+  },
+  {
+    id: 'retro',
+    name: 'Retro',
+    blurb: 'Chunky type and colour blocks',
+    description:
+      'Retro poster energy: chunky display type in uppercase, solid colour blocks, hard wipes and cuts, warm brand colours. Suits games, music, food and nostalgic brands.',
+    format: 'portrait',
+    align: 'left',
+    displayFont: 'Bungee',
+    palette: 'brand',
+    theme: 'light',
+    background: 'blocks',
+    type: { headingScale: 0.085, headingWeight: 400, uppercase: true, tracking: '0.01em' },
+    motion: { enter: 'wipe', ease: 'expo.out', stagger: 0.1, duration: 0.5 },
+    transitions: ['wipe', 'cut'],
+    radius: 0,
+    style: 'pixel-16',
   },
 ]
+export const LOOKS = TEMPLATES
 
 export const getTemplate = (id: string): Template =>
   TEMPLATES.find((template) => template.id === id) ?? TEMPLATES[0]!
@@ -187,6 +206,9 @@ const luminance = (hex: string) => {
   const n = Number.parseInt(normalizeHex(hex).slice(1), 16)
   return (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 0xff) + 0.114 * (n & 0xff)) / 255
 }
+
+/** A dark colour: light text goes on it, and pictures on white cannot be blended into it. */
+export const isDark = (hex: string) => luminance(hex) < 0.45
 
 const onColor = (hex: string) => (luminance(hex) > 0.6 ? '#1f2328' : '#ffffff')
 

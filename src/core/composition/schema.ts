@@ -17,6 +17,7 @@ export const ELEMENT_KINDS = [
   'stat',
   'quote',
   'logoReveal',
+  'showcase',
 ] as const
 export type ElementKind = (typeof ELEMENT_KINDS)[number]
 
@@ -55,9 +56,9 @@ export type ElementItem = z.infer<typeof itemSchema>
 
 export const elementSchema = z.object({
   kind: z.enum(ELEMENT_KINDS),
-  /** illustration: what happens in the picture, using cast names. */
+  /** illustration: what happens in the picture, using cast names. showcase: unused. */
   prompt: z.string(),
-  /** illustration: cast members in the picture. */
+  /** illustration: cast members in the picture. showcase: the exact object to show (first name). */
   cast: z.array(z.string()).max(4),
   /** illustration: bump to get a new take with the same prompt. */
   variant: z.number().int().min(0),
@@ -95,14 +96,20 @@ export const sceneSchema = z.object({
   id: z.string().min(1),
   chapterId: z.string().min(1),
   chrome: chromeSchema,
+  /** What the visual should show, in words (from the script or the story pass); guides direction. */
+  brief: z.string().default(''),
   element: elementSchema,
   beats: z.array(beatSchema).max(8),
-  /** Narration for this scene; empty means silent. */
+  /** Narration for this scene; empty means silent. `[tags]` are delivery hints, not spoken. */
   voiceover: z.string(),
+  /** Bump to record the narration again with the same text. */
+  voiceTake: z.number().int().min(0).default(0),
   /** Seconds. Grows to fit the narration once it is generated. */
   duration: z.number().min(1).max(30),
   /** How this scene enters over the previous one. */
   transition: z.enum(TRANSITIONS),
+  /** Art style for this scene's picture; "" = the chapter's or the video's. */
+  styleId: z.string().default(''),
 })
 export type Scene = z.infer<typeof sceneSchema>
 
@@ -112,21 +119,49 @@ export const chapterSchema = z.object({
   title: z.string(),
   /** `dark` chapters use the brand colour as the ground (e.g. the closing section). */
   tone: z.enum(['light', 'dark']),
+  /** Art style for the chapter's pictures (e.g. a flashback); "" = the video's. */
+  styleId: z.string().default(''),
 })
 export type Chapter = z.infer<typeof chapterSchema>
 
 export const castMemberSchema = z.object({
   name: z.string().min(1),
-  /** Appearance and outfit, repeated verbatim in every illustration prompt. */
+  /** Appearance and outfit, for the writer and as the text fallback when there is no sheet. */
   description: z.string(),
+  /** People and animals are drawn in poses; objects are things like a toy, product or logo. */
+  kind: z.enum(['character', 'object']).default('character'),
+  /** Asset ids of reference images (video crops, uploads). */
+  refs: z.array(z.string()).max(4).default([]),
+  /** Asset id of the approved sheet every picture is drawn from; "" until approved. */
+  sheet: z.string().default(''),
+  /** Art style the sheet was drawn in; a different video style redraws it from the sheet. */
+  sheetStyle: z.string().default(''),
+  /** Locked members are never redrawn or re-described by prompt edits. */
+  locked: z.boolean().default(false),
+  /** `template`: redraw in the template's illustration style; `source`: keep the references' look. */
+  look: z.enum(['template', 'source']).default('template'),
+  /** Objects shown with their real pixels (logo, product, UI) and never generated. */
+  exact: z.boolean().default(false),
 })
 export type CastMember = z.infer<typeof castMemberSchema>
 
 export const castSchema = z.object({
-  members: z.array(castMemberSchema).max(6),
+  members: z.array(castMemberSchema).max(8),
   seed: z.number().int().min(0),
 })
 export type Cast = z.infer<typeof castSchema>
+
+export const voiceSchema = z.object({
+  /** `default`: the speech model's own voice; `clone`: imitate `sample`. */
+  mode: z.enum(['default', 'clone']),
+  /** Asset id of a short WAV of the voice to imitate. */
+  sample: z.string(),
+  /** What is said in the sample (cloning models need it). */
+  sampleText: z.string(),
+})
+export type Voice = z.infer<typeof voiceSchema>
+
+export const DEFAULT_VOICE: Voice = { mode: 'default', sample: '', sampleText: '' }
 
 export const compositionSchema = z
   .object({
@@ -134,9 +169,19 @@ export const compositionSchema = z
     title: z.string(),
     format: z.enum(Object.keys(FORMATS) as [FormatId, ...FormatId[]]),
     fps: z.number().int().min(12).max(60),
+    /** The look (design system); see core/templates. */
     templateId: z.string().min(1),
+    /** The kind of video (story shape); see core/kinds. */
+    kindId: z.string().default('explainer'),
+    /** Art style of generated pictures; "" = the look's. See core/styles. */
+    styleId: z.string().default(''),
     brand: brandSchema,
     cast: castSchema,
+    voice: voiceSchema.default(DEFAULT_VOICE),
+    /** Language of narration and on-screen text (ISO code). */
+    language: z.string().min(2).default('en'),
+    /** The user said the video is for commercial use: no non-commercial models. */
+    commercial: z.boolean().default(false),
     chapters: z.array(chapterSchema).min(1).max(12),
     scenes: z.array(sceneSchema).min(1).max(40),
   })
@@ -165,6 +210,30 @@ export const emptyElement = (kind: ElementKind = 'none'): SceneElement => ({
   text: '',
   subtext: '',
 })
+
+export const castMember = (
+  name: string,
+  description = '',
+  patch: Partial<CastMember> = {},
+): CastMember => ({
+  name,
+  description,
+  kind: 'character',
+  refs: [],
+  sheet: '',
+  sheetStyle: '',
+  locked: false,
+  look: 'template',
+  exact: false,
+  ...patch,
+})
+
+/** Narration without delivery tags like `[whisper]` or `[laughs]`. */
+export const spokenWords = (text: string) =>
+  text
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 
 let counter = 0
 export const newId = (prefix: string) =>

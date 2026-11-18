@@ -15,7 +15,7 @@ import { loadGoogleFont } from '@/domain/fonts'
 import type { TimedBeat } from './beats'
 import { NO_MEDIA, type StageMedia } from './media'
 import SceneView from './SceneView.vue'
-import { stageVars } from './theme'
+import { stageFonts, stageVars } from './theme'
 
 const props = withDefaults(
   defineProps<{ composition: Composition; seconds: number; media?: StageMedia }>(),
@@ -27,11 +27,13 @@ defineExpose({ element: () => root.value })
 
 const size = computed(() => FORMATS[props.composition.format])
 const template = computed(() => getTemplate(props.composition.templateId))
-const vars = computed(() => stageVars(template.value, props.composition.brand))
+const vars = computed(() =>
+  stageVars(template.value, props.composition.brand, props.composition.language),
+)
 
 // Fonts load on demand; the loader skips families it already has.
 watch(
-  () => [props.composition.brand.fontDisplay, props.composition.brand.fontBody],
+  () => stageFonts(props.composition.brand, props.composition.language),
   (families) => families.forEach((family) => void loadGoogleFont(family)),
   { immediate: true },
 )
