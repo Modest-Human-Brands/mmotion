@@ -1,5 +1,34 @@
 # Changelog
 
+## v0.1.2
+
+[compare changes](https://github.com/shba007/mockup-renderer/compare/v0.1.5...v0.1.2)
+
+### 🚀 Enhancements
+
+- Add new motion templates for iPhone and MacBook showcases ([e648d74](https://github.com/shba007/mockup-renderer/commit/e648d74))
+- Revamp TemplateStep view for template selection ([d53748d](https://github.com/shba007/mockup-renderer/commit/d53748d))
+
+### 💅 Refactors
+
+- Remove convert-markdown.sh script and update dependencies ([9b93eb1](https://github.com/shba007/mockup-renderer/commit/9b93eb1))
+- Remove launch configuration for Claude ([cce2d73](https://github.com/shba007/mockup-renderer/commit/cce2d73))
+- Streamline template selection process and remove unused components ([0e1ebaa](https://github.com/shba007/mockup-renderer/commit/0e1ebaa))
+
+### 🏡 Chore
+
+- Update environment variable and bump dependencies ([53100d7](https://github.com/shba007/mockup-renderer/commit/53100d7))
+
+### 🤖 CI
+
+- **release:** Update version ([bf446ff](https://github.com/shba007/mockup-renderer/commit/bf446ff))
+- **release:** Update version ([09c3916](https://github.com/shba007/mockup-renderer/commit/09c3916))
+
+### ❤️ Contributors
+
+- Shirsendu Bairagi ([@shba007](https://github.com/shba007))
+- Shba007 ([@shba007](https://github.com/shba007))
+
 ## v0.1.1
 
 [compare changes](https://github.com/shba007/mockup-renderer/compare/v0.1.5...v0.1.1)
